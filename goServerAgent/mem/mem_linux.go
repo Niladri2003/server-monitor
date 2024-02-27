@@ -3,6 +3,7 @@ package memory
 //paramerters to be measured 1.Total 2.Avilable 3.Used
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -25,7 +26,7 @@ func GetMemoryInfo() (*Memorymet, error) {
 		key := strings.TrimSpace(fields[0])
 		value := strings.TrimSpace(fields[1])
 		value = strings.Replace(value, " kB", "", -1)
-		//fmt.Println(key, ":", value)
+		fmt.Println(key, ":", value)
 		switch key {
 		//Total
 		case "MemTotal":
