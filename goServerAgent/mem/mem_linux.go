@@ -3,21 +3,22 @@ package memory
 //paramerters to be measured 1.Total 2.Avilable 3.Used
 
 import (
-	"fmt"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
+// GetMemoryInfo captures the system memory metrics and returns them.
 func GetMemoryInfo() (*Memorymet, error) {
 	memInfo, err := os.ReadFile("/proc/meminfo")
 	if err != nil {
 		return nil, err
 	}
+
 	minfoReturn := &Memorymet{}
-	memoryavailable := false
-	//parse the content of /proc/meminfo file
 	lines := strings.Split(string(memInfo), "\n")
+
 	for _, line := range lines {
 		fields := strings.Split(line, ":")
 		if len(fields) != 2 {
@@ -26,51 +27,36 @@ func GetMemoryInfo() (*Memorymet, error) {
 		key := strings.TrimSpace(fields[0])
 		value := strings.TrimSpace(fields[1])
 		value = strings.Replace(value, " kB", "", -1)
-		fmt.Println(key, ":", value)
+
+		t, err := strconv.ParseUint(value, 10, 64)
+		if err != nil {
+			return minfoReturn, err
+		}
+
 		switch key {
-		//Total
 		case "MemTotal":
-			t, err := strconv.ParseUint(value, 10, 64)
-			if err != nil {
-				return minfoReturn, err
-			}
 			minfoReturn.Total = t * 1024
-			//Free
 		case "MemFree":
-			t, err := strconv.ParseUint(value, 10, 64)
-			if err != nil {
-				return minfoReturn, err
-			}
 			minfoReturn.Free = t * 1024
-			//Avilable
 		case "MemAvailable":
-			t, err := strconv.ParseUint(value, 10, 64)
-			if err != nil {
-				return minfoReturn, err
-			}
-			memoryavailable = true
 			minfoReturn.Available = t * 1024
-			//Buffers
 		case "Buffers":
-			t, err := strconv.ParseUint(value, 10, 64)
-			if err != nil {
-				return minfoReturn, err
-			}
 			minfoReturn.Buffers = t * 1024
 		case "Cached":
-			t, err := strconv.ParseUint(value, 10, 64)
-			if err != nil {
-				return minfoReturn, err
-			}
-			minfoReturn.Cache = t * 1024
+			minfoReturn.Cached = t * 1024
+		case "SwapTotal":
+			minfoReturn.SwapTotal = t * 1024
+		case "SwapFree":
+			minfoReturn.SwapFree = t * 1024
 		}
 	}
-	if !memoryavailable {
-		minfoReturn.Available = minfoReturn.Cache + minfoReturn.Free
 
-	}
-	minfoReturn.Used = minfoReturn.Total - minfoReturn.Buffers - minfoReturn.Cache
+	// Calculate used memory
+	minfoReturn.Used = minfoReturn.Total - minfoReturn.Free - minfoReturn.Buffers - minfoReturn.Cached
 	minfoReturn.UsedPercent = float64(minfoReturn.Used) / float64(minfoReturn.Total) * 100
-	//fmt.Println("Lines=>", lines)
+
+	// Add a timestamp to the metrics
+	minfoReturn.Timestamp = time.Now().Unix()
+
 	return minfoReturn, nil
 }
