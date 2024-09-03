@@ -4,6 +4,7 @@ go 1.22.0
 
 require (
 	github.com/go-ole/go-ole v1.2.6 // indirect
+	github.com/google/gopacket v1.1.19 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
 	github.com/shirou/gopsutil/v4 v4.24.8 // indirect
