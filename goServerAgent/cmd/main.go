@@ -81,7 +81,7 @@ func main() {
 }
 
 func monitorHTTPRequests(port int) {
-	handle, err := pcap.OpenLive("lo", 1600, true, pcap.BlockForever) // Replace "eth0" with your network interface
+	handle, err := pcap.OpenLive("ens5", 1600, true, pcap.BlockForever) // Replace "eth0" with your network interface
 	if err != nil {
 		log.Fatal(err)
 	}
