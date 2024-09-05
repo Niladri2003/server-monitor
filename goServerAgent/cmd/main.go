@@ -1,154 +1,209 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"github.com/Niladri2003/server-monitor/goServerAgent"
+	"github.com/segmentio/kafka-go"
+	"github.com/shirou/gopsutil/v4/process"
+	"log"
+	"time"
+)
+
+func main() {
+	writer := kafka.Writer{
+		Addr:     kafka.TCP("localhost:9092"),
+		Topic:    "agent-data-topic",
+		Balancer: &kafka.LeastBytes{},
+	}
+
+	defer writer.Close()
+
+	// Periodically collect and display metrics
+	ticker := time.NewTicker(10 * time.Second) // Adjust the interval as needed
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			metrics := goServerAgent.CollectMetrics()
+			fmt.Println(metrics)
+			processes, err := process.Processes()
+			if err != nil {
+				fmt.Println(err)
+			}
+			fmt.Println("Top 5 processes by CPU usage:")
+			goServerAgent.TopProcessesByCPU(processes, 5)
+
+			// Display top 5 processes by memory usage
+			fmt.Println("\nTop 5 processes by Memory usage:")
+			goServerAgent.TopProcessesByMemory(processes, 5)
+			log.Println("Sending metrics to Kafka...")
+
+			// Send collected data to Kafka
+			err = writer.WriteMessages(context.Background(),
+				kafka.Message{
+					Key:   []byte("server-agent"),
+					Value: []byte(fmt.Sprintf("%v, %v", metrics, processes)),
+				},
+			)
+			if err != nil {
+				log.Fatal("failed to write message:", err)
+			}
+		}
+	}
+}
+
 //package main
 //
 //import (
+//	"bufio"
+//	"bytes"
 //	"fmt"
-//	"github.com/google/gopacket"
-//	"github.com/google/gopacket/layers"
-//	"github.com/google/gopacket/pcap"
 //	"log"
 //	"net/http"
 //	"strings"
 //	"sync/atomic"
-//)
-
-//	func main() {
-//		// Periodically collect and display metrics
-//		ticker := time.NewTicker(5 * time.Second) // Adjust the interval as needed
-//		defer ticker.Stop()
+//	"time"
 //
-//		for {
-//			select {
-//			case <-ticker.C:
-//				goServerAgent.CollectMetrics()
-//			}
+//	"github.com/google/gopacket"
+//	"github.com/google/gopacket/layers"
+//	"github.com/google/gopacket/pcap"
+//)
+//
+//var (
+//	requestCount uint64
+//	ipAddresses  = make(map[string]uint64) // Track request counts by IP address
+//	methodCounts = make(map[string]uint64) // Track request methods (GET, POST, etc.)
+//	urlCounts    = make(map[string]uint64) // Track requested URLs
+//	statusCounts = make(map[int]uint64)    // Track HTTP status codes
+//)
+//
+//func main() {
+//	port := 5000 // Default port; this should be configurable
+//
+//	// Monitor HTTP requests on the specified port
+//	go monitorHTTPRequests(port)
+//
+//	// Start your main application logic here
+//	select {}
+//}
+//
+//func monitorHTTPRequests(port int) {
+//	// Get the default network interface
+//	iface, err := pcap.FindAllDevs()
+//	if err != nil {
+//		log.Fatal(err)
+//	}
+//	if len(iface) == 0 {
+//		log.Fatal("No network interfaces found")
+//	}
+//	fmt.Println(iface[0].Name)
+//	// Open a live capture on the first available network interface
+//	handle, err := pcap.OpenLive("lo", 1600, true, pcap.BlockForever)
+//	if err != nil {
+//		log.Fatal(err)
+//	}
+//	defer handle.Close()
+//
+//	// Set a BPF filter to capture only TCP traffic on the specified port
+//	filter := fmt.Sprintf("tcp port %d", port)
+//	err = handle.SetBPFFilter(filter)
+//	if err != nil {
+//		log.Fatal(err)
+//	}
+//
+//	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
+//	var tcpBuffer bytes.Buffer
+//
+//	for packet := range packetSource.Packets() {
+//		// Process each packet
+//
+//		processPacket(packet, &tcpBuffer)
+//	}
+//}
+//
+//func processPacket(packet gopacket.Packet, buffer *bytes.Buffer) {
+//	// Extract IP layer
+//	fmt.Println("Step")
+//	ipLayer := packet.Layer(layers.LayerTypeIPv4)
+//	if ipLayer == nil {
+//		return // Not an IP packet
+//	}
+//
+//	// Extract TCP layer
+//	tcpLayer := packet.Layer(layers.LayerTypeTCP)
+//	if tcpLayer == nil {
+//		return // Not a TCP packet
+//	}
+//	tcp, _ := tcpLayer.(*layers.TCP)
+//
+//	// Reassemble TCP payload (HTTP request data)
+//	payload := tcp.Payload
+//	if len(payload) == 0 {
+//		return // No payload, skip
+//	}
+//	// Append payload to the buffer
+//	buffer.Write(payload)
+//	fmt.Println("data", buffer.String())
+//	if strings.Contains(buffer.String(), "\r\n\r\n") {
+//		// Try parsing the payload as an HTTP request once we have full headers
+//		req, err := http.ReadRequest(bufio.NewReader(buffer))
+//		if err == nil {
+//			// Successfully parsed HTTP request
+//			atomic.AddUint64(&requestCount, 1)
+//			ipSrc := packet.NetworkLayer().NetworkFlow().Src().String()
+//			methodCounts[req.Method]++
+//			urlCounts[req.URL.String()]++
+//			ipAddresses[ipSrc]++
+//
+//			// Log the request time
+//			timestamp := time.Now().Format(time.RFC3339)
+//			fmt.Printf("[%s] HTTP Request from IP: %s, Method: %s, URL: %s\n", timestamp, ipSrc, req.Method, req.URL.String())
+//
+//			// Clear the buffer after successfully reading the request
+//			buffer.Reset()
+//		} else {
+//			// If it's an incomplete HTTP request or parsing error, just continue
+//			fmt.Println("Malformed HTTP request")
+//			fmt.Println(err)
+//			buffer.Reset() // Clear buffer to avoid duplicate errors on partial data
 //		}
 //	}
-package main
+//}
+//
+//// mockReader simulates an io.Reader for parsing raw TCP payloads as HTTP requests
+//type mockReader struct {
+//	data []byte
+//}
+//
+//func (r *mockReader) Read(p []byte) (n int, err error) {
+//	if len(r.data) == 0 {
+//		return 0, fmt.Errorf("EOF")
+//	}
+//	n = copy(p, r.data)
+//	r.data = r.data[n:]
+//	return n, nil
+//}
 
-import (
-	"fmt"
-	"github.com/Niladri2003/server-monitor/goServerAgent/network"
-	"log"
-	"net/http"
-	"sync/atomic"
+//package main
 
-	"github.com/google/gopacket"
-	"github.com/google/gopacket/layers"
-	"github.com/google/gopacket/pcap"
-)
-
-var (
-	requestCount uint64
-	ipAddresses  = make(map[string]uint64) // Track request counts by IP address
-	methodCounts = make(map[string]uint64) // Track request methods (GET, POST, etc.)
-	urlCounts    = make(map[string]uint64) // Track requested URLs
-	statusCounts = make(map[int]uint64)    // Track HTTP status codes
-	headerCounts = make(map[string]uint64) // Track specific headers
-	payloadSizes = make(map[string]uint64) // Track payload sizes by URL
-)
-
-func main() {
-	port := 5000 // Default port; this should be configurable
-
-	// Monitor HTTP requests on the specified port
-	go monitorHTTPRequests(port)
-
-	// Start your main application logic here
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "Server is running. Requests count on port %d: %d\n", port, atomic.LoadUint64(&requestCount))
-		fmt.Fprintf(w, "Requests by IP:\n")
-		for ip, count := range ipAddresses {
-			fmt.Fprintf(w, "IP %s: %d requests\n", ip, count)
-		}
-		fmt.Fprintf(w, "Request Methods:\n")
-		for method, count := range methodCounts {
-			fmt.Fprintf(w, "%s: %d requests\n", method, count)
-		}
-		fmt.Fprintf(w, "Requested URLs:\n")
-		for url, count := range urlCounts {
-			fmt.Fprintf(w, "%s: %d requests\n", url, count)
-		}
-		fmt.Fprintf(w, "HTTP Status Codes:\n")
-		for status, count := range statusCounts {
-			fmt.Fprintf(w, "%d: %d responses\n", status, count)
-		}
-		fmt.Fprintf(w, "Payload Sizes by URL:\n")
-		for url, size := range payloadSizes {
-			fmt.Fprintf(w, "%s: %d bytes\n", url, size)
-		}
-	})
-	select {}
-}
-
-func monitorHTTPRequests(port int) {
-	handle, err := pcap.OpenLive("ens5", 1600, true, pcap.BlockForever) // Replace "eth0" with your network interface
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer handle.Close()
-
-	filter := fmt.Sprintf("tcp port %d", port)
-	err = handle.SetBPFFilter(filter)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
-	for packet := range packetSource.Packets() {
-		ip, method, url, statusCode, payloadSize, isHTTP := processPacket(packet)
-		if isHTTP {
-			atomic.AddUint64(&requestCount, 1)
-			ipAddresses[ip]++
-			methodCounts[method]++
-			urlCounts[url]++
-			statusCounts[statusCode]++
-			payloadSizes[url] += payloadSize
-			fmt.Printf("HTTP Request from IP %s. Method: %s, URL: %s, Status: %d, Payload Size: %d bytes\n", ip, method, url, statusCode, payloadSize)
-		}
-	}
-}
-
-func processPacket(packet gopacket.Packet) (string, string, string, int, uint64, bool) {
-	// Extract IP layer
-	var ip gopacket.Layer
-	ipLayer := packet.Layer(layers.LayerTypeIPv4)
-	if ipLayer != nil {
-		ip = ipLayer
-	} else {
-		ipLayer = packet.Layer(layers.LayerTypeIPv6)
-		if ipLayer != nil {
-			ip = ipLayer
-		} else {
-			return "", "", "", 0, 0, false
-		}
-	}
-
-	// Extract TCP layer
-	tcpLayer := packet.Layer(layers.LayerTypeTCP)
-	if tcpLayer == nil {
-		return "", "", "", 0, 0, false
-	}
-	tcp, _ := tcpLayer.(*layers.TCP)
-
-	// Check if the packet has a payload
-	if len(tcp.Payload) == 0 {
-		return "", "", "", 0, 0, false
-	}
-
-	// Extract IP address
-	var sourceIP string
-	if ipv4, ok := ip.(*layers.IPv4); ok {
-		sourceIP = ipv4.NetworkFlow().Src().String()
-	} else if ipv6, ok := ip.(*layers.IPv6); ok {
-		sourceIP = ipv6.NetworkFlow().Src().String()
-	}
-
-	// Extract HTTP request details from payload
-	payload := string(tcp.Payload)
-	if len(payload) > 0 && (payload[:3] == "GET" || payload[:4] == "POST") {
-		method, url, statusCode, payloadSize := network.ExtractHTTPDetails(payload)
-		return sourceIP, method, url, statusCode, payloadSize, true
-	}
-
-	return "", "", "", 0, 0, false
-}
+//import (
+//	"log"
+//	"sync"
+//	"time"
+//)
+//
+//type PortScanner struct {
+//	ip   string
+//	lock *sync.WaitGroup
+//}
+//
+//func main() {
+//	ps := &PortScanner{
+//		ip:   "13.60.54.61",
+//		lock: &sync.WaitGroup{},
+//	}
+//	ps.Start(1, 65535, 500*time.Millisecond)
+//	log.Println("Port Scanning completed on specific %d", ps.ip)
+//}
