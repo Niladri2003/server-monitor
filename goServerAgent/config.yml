@@ -1,0 +1,4 @@
+interval: 10   # Interval time in seconds
+api_key: "your-api-key-here"
+kafka_broker: "localhost:9092"
+topic: "agent-data-topic"

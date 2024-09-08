@@ -105,7 +105,6 @@ type ProcessInfo struct {
 	Name   string  `json:"name"`
 	CPU    float64 `json:"cpu_percent"`
 	Memory float32 `json:"memory_percent"`
-	Exec   string  `json:"exec"`
 }
 
 // HostInfo holds basic system information
@@ -228,16 +227,9 @@ func CollectMetrics() SystemMetrics {
 }
 
 // Helper function to display top N processes by CPU usage
-func TopProcessesByCPU(processes []*process.Process, topN int) {
-	type procInfo struct {
-		Pid    int32
-		Name   string
-		CPU    float64
-		Memory float32
-		Exe    string
-	}
+func TopProcessesByCPU(processes []*process.Process, topN int) []ProcessInfo {
 
-	var procList []procInfo
+	var procList []ProcessInfo
 
 	for _, proc := range processes {
 		cpuPercent, err := proc.CPUPercent()
@@ -251,7 +243,7 @@ func TopProcessesByCPU(processes []*process.Process, topN int) {
 		if err != nil {
 			name = "Unknown"
 		}
-		procList = append(procList, procInfo{
+		procList = append(procList, ProcessInfo{
 			Pid:    proc.Pid,
 			Name:   name,
 			CPU:    cpuPercent,
@@ -264,26 +256,19 @@ func TopProcessesByCPU(processes []*process.Process, topN int) {
 		return procList[i].CPU > procList[j].CPU
 	})
 
-	// Display top N processes
-	for i, proc := range procList {
-		if i >= topN {
-			break
-		}
-		fmt.Printf("PID: %d, Name: %s, CPU Usage: %.2f%%\n", proc.Pid, proc.Name, proc.CPU)
+	// If there are fewer than topN processes, return all
+	if len(procList) < topN {
+		return procList
 	}
+
+	// Return the top N processes
+	return procList[:topN]
 }
 
 // Helper function to display top N processes by Memory usage
-func TopProcessesByMemory(processes []*process.Process, topN int) {
-	type procInfo struct {
-		Pid    int32
-		Name   string
-		CPU    float64
-		Memory float32
-		Exe    string
-	}
+func TopProcessesByMemory(processes []*process.Process, topN int) []ProcessInfo {
 
-	var procList []procInfo
+	var procList []ProcessInfo
 
 	for _, proc := range processes {
 		memPercent, err := proc.MemoryPercent()
@@ -297,7 +282,7 @@ func TopProcessesByMemory(processes []*process.Process, topN int) {
 		if err != nil {
 			name = "Unknown"
 		}
-		procList = append(procList, procInfo{
+		procList = append(procList, ProcessInfo{
 			Pid:    proc.Pid,
 			Name:   name,
 			CPU:    0, // Placeholder, can be filled if needed
@@ -310,13 +295,10 @@ func TopProcessesByMemory(processes []*process.Process, topN int) {
 		return procList[i].Memory > procList[j].Memory
 	})
 
-	// Display top N processes
-	for i, proc := range procList {
-		if i >= topN {
-			break
-		}
-		fmt.Printf("PID: %d, Name: %s, Memory Usage: %.2f%%\n", proc.Pid, proc.Name, proc.Memory)
+	if len(procList) < topN {
+		return procList
 	}
+	return procList[:topN]
 }
 
 func readSystemTemperatures() {

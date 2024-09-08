@@ -2,49 +2,109 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"github.com/Niladri2003/server-monitor/goServerAgent"
+	"github.com/fatih/color"
 	"github.com/segmentio/kafka-go"
 	"github.com/shirou/gopsutil/v4/process"
+	"github.com/spf13/viper"
 	"log"
 	"time"
 )
 
+func printBanner() {
+	banner := `
+      ______   ______  __  __  ___  ____  
+     / ___\ \ / / ___||  \/  |/ _ \/ ___| 
+    \___ \\ V /\___ \| |\/| | | | \___ \ 
+     ___) || |  ___) | |  | | |_| |___) |
+    |____/ |_| |____/|_|  |_|\___/|____/ 
+			SysMos Server Monitoring System
+`
+	// Set the color to cyan
+	cyan := color.New(color.FgCyan).SprintFunc()
+	fmt.Println(cyan(banner))
+}
+
+type Config struct {
+	Interval    int    `mapstructure:"interval"`
+	APIKey      string `mapstructure:"api_key"`
+	KafkaBroker string `mapstructure:"kafka_broker"`
+	Topic       string `mapstructure:"topic"`
+}
+
+func loadConfig(configPath string) (Config, error) {
+	printBanner()
+	var config Config
+
+	// Set up Viper to read the config file
+	viper.SetConfigFile(configPath)
+
+	// Read the config file
+	if err := viper.ReadInConfig(); err != nil {
+		return config, fmt.Errorf("error reading config file: %w", err)
+	}
+
+	// Unmarshal the config into the Config struct
+	if err := viper.Unmarshal(&config); err != nil {
+		return config, fmt.Errorf("error unmarshalling config: %w", err)
+	}
+
+	return config, nil
+}
+
 func main() {
+	// Load configuration
+	// Accept a command-line flag for the config file path
+	configPath := flag.String("config", "config.yaml", "Path to the config file")
+	flag.Parse()
+
+	// Load configuration
+	config, err := loadConfig(*configPath)
+	if err != nil {
+		log.Fatalf("could not load config: %v", err)
+	}
+
+	// Kafka writer configuration
 	writer := kafka.Writer{
-		Addr:     kafka.TCP("localhost:9092"),
-		Topic:    "agent-data-topic",
+		Addr:     kafka.TCP(config.KafkaBroker),
+		Topic:    config.Topic,
 		Balancer: &kafka.LeastBytes{},
 	}
 
 	defer writer.Close()
 
 	// Periodically collect and display metrics
-	ticker := time.NewTicker(10 * time.Second) // Adjust the interval as needed
+	// Check if interval is less than 10, and set it to 10 if necessary
+	interval := config.Interval
+	if interval < 10 {
+		interval = 10 // Minimum interval is 10 seconds
+	}
+
+	// Periodically collect and display metrics
+	ticker := time.NewTicker(time.Duration(interval) * time.Second)
 	defer ticker.Stop()
+	// Adjust the interval as needed
 
 	for {
 		select {
 		case <-ticker.C:
 			metrics := goServerAgent.CollectMetrics()
-			fmt.Println(metrics)
 			processes, err := process.Processes()
 			if err != nil {
 				fmt.Println(err)
 			}
-			fmt.Println("Top 5 processes by CPU usage:")
-			goServerAgent.TopProcessesByCPU(processes, 5)
+			top5byCpu := goServerAgent.TopProcessesByCPU(processes, 5)
+			top5byMemory := goServerAgent.TopProcessesByMemory(processes, 5)
 
-			// Display top 5 processes by memory usage
-			fmt.Println("\nTop 5 processes by Memory usage:")
-			goServerAgent.TopProcessesByMemory(processes, 5)
 			log.Println("Sending metrics to Kafka...")
 
 			// Send collected data to Kafka
 			err = writer.WriteMessages(context.Background(),
 				kafka.Message{
-					Key:   []byte("server-agent"),
-					Value: []byte(fmt.Sprintf("%v, %v", metrics, processes)),
+					Key:   []byte(config.APIKey),
+					Value: []byte(fmt.Sprintf("%v, %v", metrics, top5byCpu, top5byMemory)),
 				},
 			)
 			if err != nil {
