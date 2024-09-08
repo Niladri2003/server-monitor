@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/Niladri2003/server-monitor/goServerAgent"
@@ -54,6 +55,15 @@ func loadConfig(configPath string) (Config, error) {
 	return config, nil
 }
 
+type MetricMessage struct {
+	APIKey     string                      `json:"api_key"`
+	ServerID   string                      `json:"server_id"`
+	Timestamp  string                      `json:"timestamp"`
+	Metrics    goServerAgent.SystemMetrics `json:"metrics"`
+	Top5CPU    []goServerAgent.ProcessInfo `json:"top5_cpu_processes"`
+	Top5Memory []goServerAgent.ProcessInfo `json:"top5_memory_processes"`
+}
+
 func main() {
 	// Load configuration
 	// Accept a command-line flag for the config file path
@@ -90,6 +100,7 @@ func main() {
 	for {
 		select {
 		case <-ticker.C:
+
 			metrics := goServerAgent.CollectMetrics()
 			processes, err := process.Processes()
 			if err != nil {
@@ -97,14 +108,25 @@ func main() {
 			}
 			top5byCpu := goServerAgent.TopProcessesByCPU(processes, 5)
 			top5byMemory := goServerAgent.TopProcessesByMemory(processes, 5)
-
+			message := MetricMessage{
+				APIKey:     config.APIKey,
+				ServerID:   "server1", // Unique server identifier
+				Timestamp:  time.Now().Format(time.RFC3339),
+				Metrics:    metrics,
+				Top5CPU:    top5byCpu,
+				Top5Memory: top5byMemory,
+			}
+			messageBytes, err := json.Marshal(message)
+			if err != nil {
+				log.Fatal("Failed to marshal message", err)
+			}
 			log.Println("Sending metrics to Kafka...")
 
 			// Send collected data to Kafka
 			err = writer.WriteMessages(context.Background(),
 				kafka.Message{
 					Key:   []byte(config.APIKey),
-					Value: []byte(fmt.Sprintf("%v, %v", metrics, top5byCpu, top5byMemory)),
+					Value: []byte(messageBytes),
 				},
 			)
 			if err != nil {
