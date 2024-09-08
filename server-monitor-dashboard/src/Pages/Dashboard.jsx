@@ -135,17 +135,21 @@ const Dashboard = () => {
                 </div>
 
 
-                <div className={"grid grid-cols-3 gap-2 space-y-3 pb-2 mt-10"}>
+                <div className={"grid grid-cols-2 gap-4 space-y-10 pb-2 mt-10"}>
                     <div className={"w-[100%] flex flex-col items-center"}>
-                        <p>Cpu Usage</p>
+                        <p className={"w-full text-start font-semibold"}>Cpu Usage</p>
                         <BasicLineChart/>
                     </div>
                     <div className={"w-[100%] flex flex-col items-center"}>
-                        <p>Memory Usage</p>
+                        <p  className={"w-full text-start font-semibold"}>Memory Usage</p>
                         <BasicLineChart/>
                     </div>
                     <div className={"w-[100%] flex flex-col items-center"}>
-                        <p>Disk Usage</p>
+                        <p  className={"w-full text-start font-semibold"}>Disk Usage</p>
+                        <BasicLineChart/>
+                    </div>
+                    <div className={"w-[100%] flex flex-col items-center"}>
+                        <p  className={"w-full text-start font-semibold"}>Network Usage</p>
                         <BasicLineChart/>
                     </div>
 

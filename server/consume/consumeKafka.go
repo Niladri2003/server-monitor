@@ -43,7 +43,7 @@ func ConsumeKafka(influxClient influxdb2.Client) error {
 
 		//// Now you can access the metrics and metadata
 		//log.Printf("Received data from server: %s", msg.ServerID)
-		log.Printf("Metrics: %v", msg.Metrics.Disk.Free)
+		//log.Printf("Metrics: %v", msg.Metrics.Disk.Free)
 		//log.Printf("Top 5 CPU processes: %v", msg.Top5CPU)
 		//log.Printf("Top 5 Memory processes: %v", msg.Top5Memory)
 		//log.Printf("Api Key: %v", msg.APIKey)

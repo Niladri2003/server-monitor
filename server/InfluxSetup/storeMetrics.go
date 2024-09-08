@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/Niladri2003/server-monitor/server/metrics"
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
+	"github.com/influxdata/influxdb-client-go/v2/api/write"
 	"log"
 	"time"
 )
@@ -12,7 +13,7 @@ import (
 func StoreMetricsFromKafka(client influxdb2.Client, msg metrics.MetricMessage) error {
 	// Create a WriteAPIBlocking
 
-	writeAPI := client.WriteAPIBlocking("sysmos", "server-metrics")
+	writeAPI := client.WriteAPIBlocking("sysmos", "test-bucket")
 
 	// Convert timestamp from string to time.Time
 	timestamp, err := time.Parse(time.RFC3339, msg.Timestamp)
@@ -30,29 +31,32 @@ func StoreMetricsFromKafka(client influxdb2.Client, msg metrics.MetricMessage) e
 		AddField("used_percent", msg.Metrics.Memory.UsedPercent).
 		SetTime(timestamp)
 
-	// Create the point for CPU metrics
-	cpuPoint := influxdb2.NewPointWithMeasurement("cpu").
-		AddTag("server_id", msg.ServerID).
-		AddTag("api_key", msg.APIKey).
-		AddField("model", msg.Metrics.CPU.Model).
-		AddField("cores", msg.Metrics.CPU.Cores).
-		SetTime(timestamp)
+	cpu := make([]*write.Point, 0) // Create a slice to hold all the points
 
-	// Add points for CPU times
 	for i, times := range msg.Metrics.CPU.Times {
-		cpuTimesPoint := influxdb2.NewPointWithMeasurement("cpu_times").
+		cpuMetricsPoint := influxdb2.NewPointWithMeasurement("cpu_metrics").
 			AddTag("server_id", msg.ServerID).
 			AddTag("api_key", msg.APIKey).
 			AddTag("core", fmt.Sprintf("%d", i)).
-			AddField("user_time_sec", times.User).
-			AddField("system_time_sec", times.System).
-			AddField("idle_time_sec", times.Idle).
-			AddField("iowait_time_sec", times.Iowait).
+			AddField("model", msg.Metrics.CPU.Model).                            // CPU model (same for all cores)
+			AddField("cores", msg.Metrics.CPU.Cores).                            // Total number of cores (same for all cores)
+			AddField("usage_per_core_percent", msg.Metrics.CPU.UsagePerCore[i]). // Usage for each specific core
+			AddField("user_time_sec", times.User).                               // CPU time in user mode
+			AddField("system_time_sec", times.System).                           // CPU time in system mode
+			AddField("idle_time_sec", times.Idle).                               // CPU time idle
+			AddField("iowait_time_sec", times.Iowait).                           // CPU time waiting for I/O
 			SetTime(timestamp)
-		// Write each point individually
-		if err := writeAPI.WritePoint(context.Background(), cpuTimesPoint); err != nil {
-			return fmt.Errorf("failed to write CPU times point: %w", err)
+
+		err := writeAPI.WritePoint(context.Background(), cpuMetricsPoint)
+		if err != nil {
+			return err
 		}
+		// Add the point to the batch
+		cpu = append(cpu, cpuMetricsPoint)
+	}
+	err = writeAPI.Flush(context.Background())
+	if err != nil {
+		return err
 	}
 
 	// Create the point for load averages
@@ -64,19 +68,41 @@ func StoreMetricsFromKafka(client influxdb2.Client, msg metrics.MetricMessage) e
 		AddField("load15", msg.Metrics.LoadAverages.Load15).
 		SetTime(timestamp)
 
-	// Add points for disk metrics
+	// Create a slice to hold all disk points
+	diskPoints := make([]*write.Point, 0)
+
+	// Add a point for disk usage
+	diskUsagePoint := influxdb2.NewPointWithMeasurement("disk_metrics").
+		AddTag("server_id", msg.ServerID).
+		AddTag("api_key", msg.APIKey).
+		AddField("total_gb", msg.Metrics.Disk.Total).
+		AddField("free_gb", msg.Metrics.Disk.Free).
+		AddField("used_gb", msg.Metrics.Disk.Used).
+		AddField("used_percent", msg.Metrics.Disk.UsedPercent).
+		SetTime(timestamp)
+
+	// Add the disk usage point to the slice
+	diskPoints = append(diskPoints, diskUsagePoint)
+
+	// Add points for disk I/O stats
 	for _, diskStat := range msg.Metrics.Disk.IOStats {
-		diskPoint := influxdb2.NewPointWithMeasurement("disk_io").
+		diskMetricsPoint := influxdb2.NewPointWithMeasurement("disk_metrics").
 			AddTag("server_id", msg.ServerID).
 			AddTag("api_key", msg.APIKey).
 			AddTag("disk_name", diskStat.Name).
 			AddField("read_bytes_mb", diskStat.ReadBytes).
 			AddField("write_bytes_mb", diskStat.WriteBytes).
 			SetTime(timestamp)
-		// Write each point individually
-		if err := writeAPI.WritePoint(context.Background(), diskPoint); err != nil {
-			return fmt.Errorf("failed to write disk I/O point: %w", err)
+		err := writeAPI.WritePoint(context.Background(), diskMetricsPoint)
+		if err != nil {
+			return err
 		}
+		// Add the disk I/O point to the slice
+		diskPoints = append(diskPoints, diskMetricsPoint)
+	}
+	err = writeAPI.Flush(context.Background())
+	if err != nil {
+		return err
 	}
 	// Add points for network metrics
 	for _, netStat := range msg.Metrics.Network {
@@ -94,13 +120,23 @@ func StoreMetricsFromKafka(client influxdb2.Client, msg metrics.MetricMessage) e
 			AddField("drops_out", netStat.DropsOut).
 			SetTime(timestamp)
 		// Write each point individually
-		if err := writeAPI.WritePoint(context.Background(), networkPoint); err != nil {
-			return fmt.Errorf("failed to write network point: %w", err)
+		//if err := writeAPI.WritePoint(context.Background(), networkPoint); err != nil {
+		//	return fmt.Errorf("failed to write network point: %w", err)
+		//}
+		err := writeAPI.WritePoint(context.Background(), networkPoint)
+		if err != nil {
+			return err
 		}
 	}
-	// Add points for top processes
-	for _, proc := range msg.Metrics.TopProcesses {
-		processPoint := influxdb2.NewPointWithMeasurement("top_processes").
+	err = writeAPI.Flush(context.Background())
+	if err != nil {
+		return err
+	}
+
+	// Add points for top processes by cpu
+	top5cpu := make([]*write.Point, 0)
+	for _, proc := range msg.Top5CPU {
+		processPoint := influxdb2.NewPointWithMeasurement("top_processes_by_cpu").
 			AddTag("server_id", msg.ServerID).
 			AddTag("api_key", msg.APIKey).
 			AddTag("pid", fmt.Sprintf("%d", proc.Pid)).
@@ -109,12 +145,41 @@ func StoreMetricsFromKafka(client influxdb2.Client, msg metrics.MetricMessage) e
 			AddField("memory_percent", proc.Memory).
 			SetTime(timestamp)
 		// Write each point individually
-		if err := writeAPI.WritePoint(context.Background(), processPoint); err != nil {
-			return fmt.Errorf("failed to write process point: %w", err)
+		top5cpu = append(top5cpu, processPoint)
+		err := writeAPI.WritePoint(context.Background(), processPoint)
+		if err != nil {
+			return err
 		}
 	}
-	// Create the point for load averages
-	systemHostInfo := influxdb2.NewPointWithMeasurement("load_averages").
+	err = writeAPI.Flush(context.Background())
+	if err != nil {
+		return err
+	}
+	// Add points for top processes by memory
+	top5memory := make([]*write.Point, 0)
+	for _, proc := range msg.Top5Memory {
+		processPoint := influxdb2.NewPointWithMeasurement("top_processes_by_memory").
+			AddTag("server_id", msg.ServerID).
+			AddTag("api_key", msg.APIKey).
+			AddTag("pid", fmt.Sprintf("%d", proc.Pid)).
+			AddField("name", proc.Name).
+			AddField("cpu_percent", proc.CPU).
+			AddField("memory_percent", proc.Memory).
+			SetTime(timestamp)
+		err := writeAPI.WritePoint(context.Background(), processPoint)
+		if err != nil {
+			return err
+		}
+		// Write each point individually
+		top5cpu = append(top5memory, processPoint)
+	}
+	err = writeAPI.Flush(context.Background())
+	if err != nil {
+		return err
+	}
+
+	// Create the point for Host_info
+	systemHostInfo := influxdb2.NewPointWithMeasurement("host_info").
 		AddTag("server_id", msg.ServerID).
 		AddTag("api_key", msg.APIKey).
 		AddField("hostname", msg.Metrics.SystemInfo.Hostname).
@@ -124,9 +189,30 @@ func StoreMetricsFromKafka(client influxdb2.Client, msg metrics.MetricMessage) e
 		AddField("uptime_hours", msg.Metrics.SystemInfo.UptimeHours).
 		AddField("boot_time", msg.Metrics.SystemInfo.BootTime).
 		SetTime(timestamp)
+	// Create the point for swap_memory
+	SwapMemoryInfo := influxdb2.NewPointWithMeasurement("swap_memory").
+		AddTag("server_id", msg.ServerID).
+		AddTag("api_key", msg.APIKey).
+		AddField("total_gb", msg.Metrics.Swap.Total).
+		AddField("used_gb", msg.Metrics.Swap.Used).
+		AddField("free_gb", msg.Metrics.Swap.Free).
+		AddField("used_percent", msg.Metrics.Swap.UsedPercent).
+		SetTime(timestamp)
 
+	//slice to hold all points
+	allPoints := make([]*write.Point, 0)
+
+	allPoints = append(allPoints, memoryPoint, loadAvgPoint, systemHostInfo, SwapMemoryInfo)
+	//allPoints = append(allPoints, cpu...)
+	//allPoints = append(allPoints, diskPoints...)
+	//allPoints = append(allPoints, top5cpu...)
+	//allPoints = append(allPoints, top5memory...)
+	//fmt.Println(len(allPoints))
 	// Write the points to InfluxSetup
-	err = writeAPI.WritePoint(context.Background(), memoryPoint, cpuPoint, loadAvgPoint, systemHostInfo)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	err = writeAPI.WritePoint(ctx, allPoints...)
 	if err != nil {
 		return fmt.Errorf("failed to write points: %w", err)
 	}

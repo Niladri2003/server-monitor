@@ -2,19 +2,32 @@ import React, { useState, useEffect } from 'react';
 import Stack from '@mui/material/Stack';
 import { LineChart } from '@mui/x-charts/LineChart';
 import axios from "axios";
-import {CircularProgress, Typography} from "@mui/material";
+import {CircularProgress, FormControl, InputLabel, MenuItem, Select, Typography} from "@mui/material";
 
-const data = [4000, 3000, 2000, null, 1890, 2390, 3490];
-const xData = ['Page A', 'Page B', 'Page C', 'Page D', 'Page E', 'Page F', 'Page G'];
+
+const timeRanges = [
+    { label: 'Last 1 hour', start: '-1h', stop: 'now()' },
+    { label: 'Last 6 hours', start: '-6h', stop: 'now()' },
+    { label: 'Last 12 hours', start: '-12h', stop: 'now()' },
+    { label: 'Last 24 hours', start: '-24h', stop: 'now()' },
+    { label: 'Last 7 days', start: '-7d', stop: 'now()' },
+    { label: 'Custom Range', start: '', stop: '' }, // This can be used for custom time picker
+];
+
+
 export default function LineChartConnectNulls() {
     const [data, setData] = useState([]);
     const [xData, setXData] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [selectedRange, setSelectedRange] = useState(timeRanges[1]);
+
     // Function to fetch API data
-    const fetchData = async () => {
+    const fetchData = async (start, stop) => {
+        setLoading(true);
         try {
-            const response = await axios.get('http://127.0.0.1:5000/api/v1/server/disk-usage');
+
+            const response = await axios.get('http://127.0.0.1:5000/api/v1/server/disk-usage',{ params: { start, stop } });
             const apiData = response.data;
 
             // Extract used_gb values and times for the chart
@@ -30,12 +43,15 @@ export default function LineChartConnectNulls() {
         } finally {
             setLoading(false);
         }
+        setLoading(false);
     };
 
     // Fetch data on component mount
     useEffect(() => {
-        fetchData();
-    }, []);
+        if (selectedRange.start && selectedRange.stop) {
+            fetchData(selectedRange.start, selectedRange.stop);
+        }
+    }, [selectedRange]);
     // Show loader while data is being fetched
     if (loading) {
         return (
@@ -63,12 +79,28 @@ export default function LineChartConnectNulls() {
     }
 
     return (
-        <Stack sx={{ width: '100%' }}>
-
+        <Stack sx={{ width: '100%',alignItems: 'flex-end'  }}>
+            <FormControl size={"small"} sx={{width:'30%' ,mr:'20px'}}>
+                {/*<InputLabel id="time-range-label">Time Range</InputLabel>*/}
+                <Select
+                    labelId="time-range-label"
+                    value={selectedRange.label}
+                    onChange={(e) => {
+                        const selected = timeRanges.find((range) => range.label === e.target.value);
+                        setSelectedRange(selected);
+                    }}
+                >
+                    {timeRanges.map((range, index) => (
+                        <MenuItem key={index} value={range.label}>
+                            {range.label}
+                        </MenuItem>
+                    ))}
+                </Select>
+            </FormControl>
             <LineChart
                 xAxis={[{ data: xData, scaleType: 'point' }]}
                 series={[{ data, connectNulls: true }]}
-                height={200}
+                height={250}
                 margin={{ top: 10, bottom: 20 }}
             />
         </Stack>

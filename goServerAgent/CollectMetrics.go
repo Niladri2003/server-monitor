@@ -152,16 +152,6 @@ func CollectMetrics() SystemMetrics {
 		metrics.CPU.Cores = int(cpuInfo[0].Cores)
 	}
 
-	// CPU Load Averages
-	loadAvg, err := load.Avg()
-	if err == nil {
-		metrics.LoadAverages = LoadAverages{
-			Load1:  loadAvg.Load1,
-			Load5:  loadAvg.Load5,
-			Load15: loadAvg.Load15,
-		}
-	}
-
 	// CPU Usage per Core
 	percentPerCore, err := cpu.Percent(0, true)
 	if err == nil {
@@ -178,6 +168,16 @@ func CollectMetrics() SystemMetrics {
 				Idle:   times.Idle,
 				Iowait: times.Iowait,
 			})
+		}
+	}
+
+	// CPU Load Averages
+	loadAvg, err := load.Avg()
+	if err == nil {
+		metrics.LoadAverages = LoadAverages{
+			Load1:  loadAvg.Load1,
+			Load5:  loadAvg.Load5,
+			Load15: loadAvg.Load15,
 		}
 	}
 

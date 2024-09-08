@@ -11,7 +11,7 @@ type InfluxConfig struct {
 }
 
 func NewConfig() *InfluxConfig {
-	client := influxdb2.NewClient(os.Getenv("INFLUXDB_URL"), os.Getenv("INFLUXDB_TOKEN"))
+	client := influxdb2.NewClientWithOptions(os.Getenv("INFLUXDB_URL"), os.Getenv("INFLUXDB_TOKEN"), influxdb2.DefaultOptions().SetBatchSize(20))
 	return &InfluxConfig{
 		InfluxClient: client,
 	}
