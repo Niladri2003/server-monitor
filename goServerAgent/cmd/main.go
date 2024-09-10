@@ -10,7 +10,9 @@ import (
 	"github.com/segmentio/kafka-go"
 	"github.com/shirou/gopsutil/v4/process"
 	"github.com/spf13/viper"
+	"io/ioutil"
 	"log"
+	"net/http"
 	"time"
 )
 
@@ -35,6 +37,9 @@ type Config struct {
 	ServerId    string `mapstructure:"server_id"`
 	Topic       string `mapstructure:"topic"`
 }
+type VerificationStatus struct {
+	Verified bool `json:"verified"`
+}
 
 func loadConfig(configPath string) (Config, error) {
 	printBanner()
@@ -54,6 +59,34 @@ func loadConfig(configPath string) (Config, error) {
 	}
 
 	return config, nil
+}
+func verifyAPIKey(apiKey string) bool {
+	// Simulate API key verification (replace this with actual logic)
+	// e.g., make an HTTP request to your backend to verify the key
+	url := fmt.Sprintf("http://127.0.0.1:5000/api/v1/server/verify-api?api_key=%s", apiKey)
+	resp, err := http.Get(url)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		fmt.Println("API key verification failed:", err)
+		return false
+	}
+	fmt.Println("API key verified successfully")
+	return true
+}
+
+func loadVerificationStatus() bool {
+	file, err := ioutil.ReadFile("verified.json")
+	if err != nil {
+		return false // Assume not verified if file doesn't exist
+	}
+	var status VerificationStatus
+	json.Unmarshal(file, &status)
+	return status.Verified
+}
+
+func saveVerificationStatus() {
+	status := VerificationStatus{Verified: true}
+	data, _ := json.Marshal(status)
+	ioutil.WriteFile("verified.json", data, 0644)
 }
 
 type MetricMessage struct {
@@ -77,8 +110,18 @@ func main() {
 		log.Fatalf("could not load config: %v", err)
 	}
 	//Print Config file
-	fmt.Println("---------config----------\n")
-	fmt.Println("Server Id => %s", config.ServerId)
+	fmt.Println("---------config----------")
+	fmt.Println("Server Id =", config.ServerId)
+
+	// Check if the API key has already been verified
+	if !loadVerificationStatus() {
+		// If not verified, verify the API key
+		if !verifyAPIKey(config.APIKey) {
+			log.Fatal("API key verification failed. Exiting...")
+		}
+		// Save verification status to avoid re-verification
+		saveVerificationStatus()
+	}
 	// Kafka writer configuration
 	writer := kafka.Writer{
 		Addr:     kafka.TCP(config.KafkaBroker),
