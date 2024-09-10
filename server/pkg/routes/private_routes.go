@@ -39,5 +39,10 @@ func PrivateRoutes(a *fiber.App, config *utils2.InfluxConfig) {
 		return controllers.GetHostInfo(c, config.InfluxClient)
 	})
 	route.Post("/test", middleware.Protected(), controllers.Test)
+	route.Post("/add-server", middleware.Protected(), controllers.AddServerForMonitoring)
+	route.Put("/update-server/:id", middleware.Protected(), controllers.UpdateServer)
+	route.Delete("/delete-server/:id", middleware.Protected(), controllers.DeleteServer)
+	route.Get("/get-all-servers", middleware.Protected(), controllers.GetServersByUser)
+	route.Get("/get-server/:id", middleware.Protected(), controllers.GetServerByID)
 
 }
