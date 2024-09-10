@@ -13,7 +13,7 @@ import (
 func StoreMetricsFromKafka(client influxdb2.Client, msg metrics.MetricMessage) error {
 	// Create a WriteAPIBlocking
 
-	writeAPI := client.WriteAPIBlocking("sysmos", "test-bucket")
+	writeAPI := client.WriteAPIBlocking("sysmos", "test-bucket-2")
 
 	// Convert timestamp from string to time.Time
 	timestamp, err := time.Parse(time.RFC3339, msg.Timestamp)

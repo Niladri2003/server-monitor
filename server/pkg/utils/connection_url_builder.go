@@ -20,6 +20,9 @@ func ConnectionURLBuilder(n string) (string, error) {
 			os.Getenv("REDIS_HOST"),
 			os.Getenv("REDIS_PORT"),
 		)
+	case "mongodb":
+		// URL for Redis connection.
+		url = fmt.Sprintf("mongodb+srv://%s:%s@%s.l90io.mongodb.net/?retryWrites=true&w=majority&appName=sysmos", os.Getenv("MONGO_USER"), os.Getenv("MONGO_PASS"), os.Getenv("MONGO_USER"))
 	default:
 		// Return error message.
 		return "", fmt.Errorf("connection name '%v' is not supported", n)

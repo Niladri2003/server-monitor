@@ -7,6 +7,7 @@ import (
 	"github.com/Niladri2003/server-monitor/server/pkg/middleware"
 	"github.com/Niladri2003/server-monitor/server/pkg/routes"
 	"github.com/Niladri2003/server-monitor/server/pkg/utils"
+	"github.com/Niladri2003/server-monitor/server/platform/database"
 	"github.com/gofiber/fiber/v2"
 	"github.com/joho/godotenv"
 	"log"
@@ -19,7 +20,11 @@ func main() {
 		log.Fatalf("Error loading .env file")
 	}
 	config := configs.FiberConfig()
-
+	// init Mongodb
+	err = database.InitDb()
+	if err != nil {
+		log.Fatal(err)
+	}
 	//Define a new fiber app with config.
 	app := fiber.New(config)
 
@@ -34,11 +39,13 @@ func main() {
 	}()
 
 	// Pass the InfluxClient to the route handlers
-	routes.PublicRoutes(app, influxconfig)
+	routes.PublicRoutes(app)
+	routes.PrivateRoutes(app, influxconfig)
 
 	app.Get("/", func(c *fiber.Ctx) error {
 		return c.SendString("Hello, World!")
 	})
+	fmt.Println(utils.ConnectionURLBuilder("mongodb"))
 
 	// Start server (with or without graceful shutdown)
 	if os.Getenv("STAGE_STATUS") == "dev" {
