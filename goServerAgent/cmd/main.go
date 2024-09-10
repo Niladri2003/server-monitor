@@ -21,7 +21,7 @@ func printBanner() {
     \___ \\ V /\___ \| |\/| | | | \___ \ 
      ___) || |  ___) | |  | | |_| |___) |
     |____/ |_| |____/|_|  |_|\___/|____/ 
-			SysMos Server Monitoring System
+		SysMos Server Monitoring System made with ♡ by Niladri
 `
 	// Set the color to cyan
 	cyan := color.New(color.FgCyan).SprintFunc()
@@ -32,6 +32,7 @@ type Config struct {
 	Interval    int    `mapstructure:"interval"`
 	APIKey      string `mapstructure:"api_key"`
 	KafkaBroker string `mapstructure:"kafka_broker"`
+	ServerId    string `mapstructure:"server_id"`
 	Topic       string `mapstructure:"topic"`
 }
 
@@ -75,7 +76,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("could not load config: %v", err)
 	}
-
+	//Print Config file
+	fmt.Println("---------config----------\n")
+	fmt.Println("Server Id => %s", config.ServerId)
 	// Kafka writer configuration
 	writer := kafka.Writer{
 		Addr:     kafka.TCP(config.KafkaBroker),
@@ -110,7 +113,7 @@ func main() {
 			top5byMemory := goServerAgent.TopProcessesByMemory(processes, 5)
 			message := MetricMessage{
 				APIKey:     config.APIKey,
-				ServerID:   "server1", // Unique server identifier
+				ServerID:   config.ServerId, // Unique server identifier
 				Timestamp:  time.Now().Format(time.RFC3339),
 				Metrics:    metrics,
 				Top5CPU:    top5byCpu,

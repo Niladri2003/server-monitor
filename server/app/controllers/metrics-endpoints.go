@@ -20,11 +20,25 @@ func GetMemoryUsage(c *fiber.Ctx, client influxdb2.Client) error {
 	// Parse the time range from the query parameters
 	start := c.Query("start", "-1h") // Default to -6h if not provided
 	stop := c.Query("stop", "now()") // Default to now() if not provided
+	serverID := c.Query("server_id")
 
+	// Ensure that  serverID  is provided
+	if serverID == "" {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
+			"error":   true,
+			"message": "Either server_id or api_key must be provided",
+		})
+	}
+	// Start building the query string
 	query := `from(bucket: "` + os.Getenv("INFLUXDB_BUCKET") + `")
               |> range(start: ` + start + `, stop: ` + stop + `)
-              |> filter(fn: (r) => r._measurement == "memory")
-              |> filter(fn: (r) => r._field == "free_gb" or r._field == "total_gb" or r._field == "used_percent" or r._field == "used_gb")
+              |> filter(fn: (r) => r["_measurement"] == "memory")`
+	// Add filters for server_id or api_key if provided
+
+	query += ` |> filter(fn: (r) => r["server_id"] == "` + serverID + `")`
+
+	query += `|> filter(fn: (r) => r._field == "free_gb" or r._field == "total_gb"
+				or r._field == "used_percent" or r._field == "used_gb")
   	          |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")`
 
 	return queryInfluxDB(c, client, query, "Memory")
@@ -33,11 +47,25 @@ func GetSwapMemoryUsage(c *fiber.Ctx, client influxdb2.Client) error {
 	// Parse the time range from the query parameters
 	start := c.Query("start", "-1h") // Default to -6h if not provided
 	stop := c.Query("stop", "now()") // Default to now() if not provided
+	serverID := c.Query("server_id")
 
+	// Ensure that  serverID  is provided
+	if serverID == "" {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
+			"error":   true,
+			"message": "Either server_id or api_key must be provided",
+		})
+	}
+	// Start building the query string
 	query := `from(bucket: "` + os.Getenv("INFLUXDB_BUCKET") + `")
               |> range(start: ` + start + `, stop: ` + stop + `)
-              |> filter(fn: (r) => r._measurement == "swap_memory")
-              |> filter(fn: (r) => r._field == "free_gb" or r._field == "total_gb" or r._field == "used_percent" or r._field == "used_gb")
+              |> filter(fn: (r) => r["_measurement"] == "swap_memory")`
+	// Add filters for server_id or api_key if provided
+
+	query += ` |> filter(fn: (r) => r["server_id"] == "` + serverID + `")`
+
+	query += `|> filter(fn: (r) => r._field == "free_gb" or r._field == "total_gb" 
+				or r._field == "used_percent" or r._field == "used_gb")
   	          |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")`
 
 	return queryInfluxDB(c, client, query, "Swap")
@@ -46,11 +74,26 @@ func GetCpuUsage(c *fiber.Ctx, client influxdb2.Client) error {
 	// Parse the time range from the query parameters
 	start := c.Query("start", "-1h") // Default to -6h if not provided
 	stop := c.Query("stop", "now()") // Default to now() if not provided
+	serverID := c.Query("server_id")
 
+	// Ensure that  serverID  is provided
+	if serverID == "" {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
+			"error":   true,
+			"message": "Either server_id or api_key must be provided",
+		})
+	}
+	// Start building the query string
 	query := `from(bucket: "` + os.Getenv("INFLUXDB_BUCKET") + `")
               |> range(start: ` + start + `, stop: ` + stop + `)
-              |> filter(fn: (r) => r._measurement == "cpu_metrics")
-              |> filter(fn: (r) => r._field == "core" or r._field == "idle_time_sec" or r._field == "iowait_time_sec" or r._field == "system_time_sec" or r._field == "usage_per_core_percent" or r._field == "user_time_sec" or r._field == "model")
+              |> filter(fn: (r) => r["_measurement"] == "cpu_metrics")`
+	// Add filters for server_id or api_key if provided
+
+	query += ` |> filter(fn: (r) => r["server_id"] == "` + serverID + `")`
+
+	query += `|> filter(fn: (r) => r._field == "core" or r._field == "idle_time_sec" 
+		      or r._field == "iowait_time_sec" or r._field == "system_time_sec" or 
+              r._field == "usage_per_core_percent" or r._field == "user_time_sec" or r._field == "model")
   	          |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")`
 
 	return queryInfluxDB(c, client, query, "Cpu")
@@ -59,10 +102,24 @@ func GetTop5ProcessByCpu(c *fiber.Ctx, client influxdb2.Client) error {
 	// Parse the time range from the query parameters
 	start := c.Query("start", "-1h") // Default to -6h if not provided
 	stop := c.Query("stop", "now()") // Default to now() if not provided
+	serverID := c.Query("server_id")
+
+	// Ensure that  serverID  is provided
+	if serverID == "" {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
+			"error":   true,
+			"message": "Either server_id or api_key must be provided",
+		})
+	}
+	// Start building the query string
 	query := `from(bucket: "` + os.Getenv("INFLUXDB_BUCKET") + `")
               |> range(start: ` + start + `, stop: ` + stop + `)
-              |> filter(fn: (r) => r._measurement == "top_processes_by_cpu")
-              |> filter(fn: (r) => r._field == "name" or r._field == "cpu_percent" or r._field == "memory_percent" or r._field == "pid" )
+              |> filter(fn: (r) => r["_measurement"] == "top_processes_by_cpu")`
+	// Add filters for server_id or api_key if provided
+
+	query += ` |> filter(fn: (r) => r["server_id"] == "` + serverID + `")`
+
+	query += `|> filter(fn: (r) => r._field == "name" or r._field == "cpu_percent" or r._field == "memory_percent" or r._field == "pid" )
   	          |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")`
 
 	return queryInfluxDB(c, client, query, "ProcessCpu")
@@ -71,20 +128,49 @@ func GetTop5ProcessByMemory(c *fiber.Ctx, client influxdb2.Client) error {
 	// Parse the time range from the query parameters
 	start := c.Query("start", "-1h") // Default to -6h if not provided
 	stop := c.Query("stop", "now()") // Default to now() if not provided
+	serverID := c.Query("server_id")
+
+	// Ensure that  serverID  is provided
+	if serverID == "" {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
+			"error":   true,
+			"message": "Either server_id or api_key must be provided",
+		})
+	}
+	// Start building the query string
 	query := `from(bucket: "` + os.Getenv("INFLUXDB_BUCKET") + `")
               |> range(start: ` + start + `, stop: ` + stop + `)
-              |> filter(fn: (r) => r._measurement == "top_processes_by_memory")
-              |> filter(fn: (r) => r._field == "name" or r._field == "cpu_percent" or r._field == "memory_percent" or r._field == "pid" )
+              |> filter(fn: (r) => r["_measurement"] == "top_processes_by_memory")`
+	// Add filters for server_id or api_key if provided
+
+	query += ` |> filter(fn: (r) => r["server_id"] == "` + serverID + `")`
+
+	query += `|> filter(fn: (r) => r._field == "name" or r._field == "cpu_percent" or r._field == "memory_percent" or r._field == "pid" )
   	          |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")`
 
 	return queryInfluxDB(c, client, query, "ProcessMemory")
 }
 func GetHostInfo(c *fiber.Ctx, client influxdb2.Client) error {
+	serverID := c.Query("server_id")
 
+	// Ensure that  serverID  is provided
+	if serverID == "" {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
+			"error":   true,
+			"message": "server_id must be provided",
+		})
+	}
+	// Start building the query string
 	query := `from(bucket: "` + os.Getenv("INFLUXDB_BUCKET") + `")
-			  |> range(start: -1d)
-              |> filter(fn: (r) => r._measurement == "host_info")
-              |> filter(fn: (r) => r._field == "boot_time" or r._field == "hostname" or r._field == "kernel_version" or r._field == "os" or r._field == "platform_version" or r._field == "uptime_hours")
+              |> range(start: -1d)
+              |> filter(fn: (r) => r["_measurement"] == "host_info")`
+
+	// Add filters for server_id or api_key if provided
+
+	query += ` |> filter(fn: (r) => r["server_id"] == "` + serverID + `")`
+
+	query += `|> filter(fn: (r) => r._field == "boot_time" or r._field == "hostname" 
+	          or r._field == "kernel_version" or r._field == "os" or r._field == "platform_version" or r._field == "uptime_hours")
               |> last()
   	          |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")`
 
@@ -95,11 +181,25 @@ func GetDiskUsage(c *fiber.Ctx, client influxdb2.Client) error {
 	// Parse the time range from the query parameters
 	start := c.Query("start", "-1h") // Default to -6h if not provided
 	stop := c.Query("stop", "now()") // Default to now() if not provided
+	serverID := c.Query("server_id")
 
+	// Ensure that  serverID  is provided
+	if serverID == "" {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
+			"error":   true,
+			"message": "server_id must be provided",
+		})
+	}
+	// Start building the query string
 	query := `from(bucket: "` + os.Getenv("INFLUXDB_BUCKET") + `")
-              |> range(start: ` + start + `, stop: ` + stop + `)
-              |> filter(fn: (r) => r._measurement == "disk")
-              |> filter(fn: (r) => r._field == "free_gb" or r._field == "total_gb" or r._field == "used_percent" or r._field == "used_gb")
+             |> range(start: ` + start + `, stop: ` + stop + `)
+              |> filter(fn: (r) => r["_measurement"] == "disk")`
+
+	// Add filters for server_id or api_key if provided
+
+	query += ` |> filter(fn: (r) => r["server_id"] == "` + serverID + `")`
+
+	query += `|> filter(fn: (r) => r._field == "free_gb" or r._field == "total_gb" or r._field == "used_percent" or r._field == "used_gb")
   	          |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")`
 
 	return queryInfluxDB(c, client, query, "disk")
@@ -109,13 +209,33 @@ func GetNetworkStats(c *fiber.Ctx, client influxdb2.Client) error {
 	// Parse the time range from the query parameters
 	start := c.Query("start", "-1h") // Default to -6h if not provided
 	stop := c.Query("stop", "now()")
+	serverID := c.Query("server_id")
 	fmt.Println(start) // Default to now() if not provided
-
+	// Ensure that  serverID  is provided
+	if serverID == "" {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
+			"error":   true,
+			"message": "Either server_id or api_key must be provided",
+		})
+	}
+	// Start building the query string
 	query := `from(bucket: "` + os.Getenv("INFLUXDB_BUCKET") + `")
               |> range(start: ` + start + `, stop: ` + stop + `)
-              |> filter(fn: (r) => r["_measurement"] == "network")
-              |> filter(fn: (r) => r._field == "bytes_recv_mb" or r._field == "bytes_sent_mb" or r._field == "drops_in" or r._field == "drops_out" or r._field == "errors_in" or r._field == "errors_out" or r._field == "interface_name" or r._field == "packets_recv" or r._field == "packets_sent")
+              |> filter(fn: (r) => r["_measurement"] == "network")`
+
+	// Add filters for server_id or api_key if provided
+
+	query += ` |> filter(fn: (r) => r["server_id"] == "` + serverID + `")`
+
+	// Filter on fields (e.g., bytes sent/received, drops, errors, etc.)
+	query += ` |> filter(fn: (r) => r._field == "bytes_recv_mb" or r._field == "bytes_sent_mb" 
+	                           or r._field == "drops_in" or r._field == "drops_out" 
+	                           or r._field == "errors_in" or r._field == "errors_out" 
+	                           or r._field == "interface_name" or r._field == "packets_recv" 
+	                           or r._field == "packets_sent")
   	          |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")`
+
+	// Execute the query
 
 	return queryInfluxDB(c, client, query, "Network")
 }
