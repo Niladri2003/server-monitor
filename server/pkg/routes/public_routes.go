@@ -14,5 +14,8 @@ func PublicRoutes(a *fiber.App) {
 	route.Post("/user/sign-in", func(c *fiber.Ctx) error {
 		return controllers.UserSignIn(c)
 	})
+	route.Get("/server/verify-api", func(c *fiber.Ctx) error {
+		return controllers.ApiKeyVerification(c)
+	})
 
 }

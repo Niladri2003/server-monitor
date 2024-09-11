@@ -9,13 +9,6 @@ import (
 	"os"
 )
 
-func GetMetrics(c *fiber.Ctx, client influxdb2.Client) error {
-	query := `from(bucket: "` + os.Getenv("INFLUXDB_BUCKET") + `")
-              |> range(start: -1h)
-              |> filter(fn: (r) => r["_measurement"] == "system_metrics")`
-
-	return queryInfluxDB(c, client, query, "metrics")
-}
 func GetMemoryUsage(c *fiber.Ctx, client influxdb2.Client) error {
 	// Parse the time range from the query parameters
 	start := c.Query("start", "-1h") // Default to -6h if not provided
@@ -176,7 +169,6 @@ func GetHostInfo(c *fiber.Ctx, client influxdb2.Client) error {
 
 	return queryInfluxDB(c, client, query, "HostInfo")
 }
-
 func GetDiskUsage(c *fiber.Ctx, client influxdb2.Client) error {
 	// Parse the time range from the query parameters
 	start := c.Query("start", "-1h") // Default to -6h if not provided
@@ -204,7 +196,6 @@ func GetDiskUsage(c *fiber.Ctx, client influxdb2.Client) error {
 
 	return queryInfluxDB(c, client, query, "disk")
 }
-
 func GetNetworkStats(c *fiber.Ctx, client influxdb2.Client) error {
 	// Parse the time range from the query parameters
 	start := c.Query("start", "-1h") // Default to -6h if not provided

@@ -9,6 +9,7 @@ import (
 	"github.com/Niladri2003/server-monitor/server/pkg/utils"
 	"github.com/Niladri2003/server-monitor/server/platform/database"
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/compress"
 	"github.com/joho/godotenv"
 	"log"
 	"os"
@@ -30,6 +31,10 @@ func main() {
 
 	//Middlewares
 	middleware.FiberMiddleware(app)
+	// Enable compression middleware
+	app.Use(compress.New(compress.Config{
+		Level: compress.LevelBestSpeed, // Set the desired compression level
+	}))
 	influxconfig := utils.NewConfig()
 
 	go func() {

@@ -12,7 +12,7 @@ func PrivateRoutes(a *fiber.App, config *utils2.InfluxConfig) {
 
 	// Pass the InfluxClient to the controller
 	route.Get("/server/metrics", func(c *fiber.Ctx) error {
-		return controllers.GetMetrics(c, config.InfluxClient)
+		return controllers.GetAllMetrics(c, config.InfluxClient)
 	})
 	route.Get("/server/disk-usage", func(c *fiber.Ctx) error {
 		return controllers.GetDiskUsage(c, config.InfluxClient)
