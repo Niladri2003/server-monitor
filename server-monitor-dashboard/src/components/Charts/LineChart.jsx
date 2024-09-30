@@ -20,16 +20,16 @@ export default function LineChartConnectNulls() {
     const [xData, setXData] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    const [selectedRange, setSelectedRange] = useState(timeRanges[1]);
-
+    const [selectedRange, setSelectedRange] = useState(timeRanges[5]);
+    const server_id="66153345-f837-4444-9294-e0a7ddb0ae17"
     // Function to fetch API data
     const fetchData = async (start, stop) => {
         setLoading(true);
         try {
-
-            const response = await axios.get('http://127.0.0.1:5000/api/v1/server/disk-usage',{ params: { start, stop } });
-            const apiData = response.data;
-
+            console.log("Hello")
+            const response = await axios.get('http://127.0.0.1:5000/api/v1/server/memory-usage',{ params: { start, stop,server_id } });
+            const apiData = response.data.data;
+            console.log(apiData)
             // Extract used_gb values and times for the chart
             const usedGbData = apiData.map(item => item.used_gb);
             const timeLabels = apiData.map(item =>
@@ -39,6 +39,7 @@ export default function LineChartConnectNulls() {
             setData(usedGbData);
             setXData(timeLabels);
         } catch (err) {
+            console.log(err)
             setError('Failed to fetch data');
         } finally {
             setLoading(false);
@@ -53,18 +54,18 @@ export default function LineChartConnectNulls() {
         }
     }, [selectedRange]);
     // Show loader while data is being fetched
-    if (loading) {
-        return (
-            <Stack
-                sx={{ width: '100%', height: '200px' }}
-                justifyContent="center"
-                alignItems="center"
-            >
-                <CircularProgress />
-                <Typography>Loading data...</Typography>
-            </Stack>
-        );
-    }
+    // if (loading) {
+    //     return (
+    //         <Stack
+    //             sx={{ width: '100%', height: '200px' }}
+    //             justifyContent="center"
+    //             alignItems="center"
+    //         >
+    //             <CircularProgress />
+    //             <Typography>Loading data...</Typography>
+    //         </Stack>
+    //     );
+    // }
     // Show error message if API call fails
     if (error) {
         return (
@@ -97,12 +98,14 @@ export default function LineChartConnectNulls() {
                     ))}
                 </Select>
             </FormControl>
+
             <LineChart
-                xAxis={[{ data: xData, scaleType: 'point' }]}
+                xAxis={[{ data: xData, scaleType: 'band' }]}
                 series={[{ data, connectNulls: true }]}
                 height={250}
                 margin={{ top: 10, bottom: 20 }}
             />
+
         </Stack>
     );
 }

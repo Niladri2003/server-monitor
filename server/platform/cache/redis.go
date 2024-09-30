@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"fmt"
 	"github.com/Niladri2003/server-monitor/server/pkg/utils"
 	"github.com/redis/go-redis/v9"
 	"os"
@@ -21,5 +22,6 @@ func RedisConnection() (*redis.Client, error) {
 		Password: os.Getenv("REDIS_PASSWORD"),
 		DB:       dbNumber,
 	}
+	fmt.Println(options)
 	return redis.NewClient(options), nil
 }

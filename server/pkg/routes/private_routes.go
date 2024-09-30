@@ -26,14 +26,17 @@ func PrivateRoutes(a *fiber.App, config *utils2.InfluxConfig) {
 	route.Get("/server/swap-usage", func(c *fiber.Ctx) error {
 		return controllers.GetSwapMemoryUsage(c, config.InfluxClient)
 	})
-	route.Get("/server/cpu-usage", func(c *fiber.Ctx) error {
+	route.Get("/server/cpustats-usage", func(c *fiber.Ctx) error {
 		return controllers.GetCpuUsage(c, config.InfluxClient)
 	})
-	route.Get("/server/get-top5-process-by-cpu", func(c *fiber.Ctx) error {
+	route.Get("/server/get-top5-process-by-cpustats", func(c *fiber.Ctx) error {
 		return controllers.GetTop5ProcessByCpu(c, config.InfluxClient)
 	})
 	route.Get("/server/get-top5-process-by-memory", func(c *fiber.Ctx) error {
 		return controllers.GetTop5ProcessByMemory(c, config.InfluxClient)
+	})
+	route.Get("/server/cpustats-load", func(c *fiber.Ctx) error {
+		return controllers.CpuLoadAvg(c, config.InfluxClient)
 	})
 	route.Get("/server/get-server-info", func(c *fiber.Ctx) error {
 		return controllers.GetHostInfo(c, config.InfluxClient)

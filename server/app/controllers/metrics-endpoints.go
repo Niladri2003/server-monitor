@@ -9,6 +9,28 @@ import (
 	"os"
 )
 
+func CpuLoadAvg(c *fiber.Ctx, client influxdb2.Client) error {
+	// Parse the time range from the query parameters
+	start := c.Query("start", "-1h") // Default to -6h if not provided
+	stop := c.Query("stop", "now()") // Default to now() if not provided
+	serverID := c.Query("server_id")
+	// Ensure that  serverID  is provided
+	if serverID == "" {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
+			"error":   true,
+			"message": "Either server_id or api_key must be provided",
+		})
+	}
+
+	query := `from(bucket: "` + os.Getenv("INFLUXDB_BUCKET") + `")
+              |> range(start: ` + start + `, stop: ` + stop + `)
+              |> filter(fn: (r) => r["_measurement"] == "load_averages")
+              |> filter(fn: (r) => r["server_id"] == "` + serverID + `")
+              |> filter(fn: (r) => r._field == "load1" or r._field == "load5" or r._field == "load15")
+              |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")`
+	return queryInfluxDB(c, client, query, "CpuLoad")
+
+}
 func GetMemoryUsage(c *fiber.Ctx, client influxdb2.Client) error {
 	// Parse the time range from the query parameters
 	start := c.Query("start", "-1h") // Default to -6h if not provided
@@ -174,7 +196,7 @@ func GetDiskUsage(c *fiber.Ctx, client influxdb2.Client) error {
 	start := c.Query("start", "-1h") // Default to -6h if not provided
 	stop := c.Query("stop", "now()") // Default to now() if not provided
 	serverID := c.Query("server_id")
-
+	fmt.Println("Hello")
 	// Ensure that  serverID  is provided
 	if serverID == "" {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
@@ -363,6 +385,20 @@ func queryInfluxDB(c *fiber.Ctx, client influxdb2.Client, query string, metricst
 			}
 			data = append(data, row)
 		}
+	case "CpuLoad":
+		for result.Next() {
+			record := result.Record()
+			//fmt.Println("data", record)
+			// The fields are now columns, so we'll extract them individually
+			row := map[string]interface{}{
+				"time":    record.Time(),
+				"load_1":  record.ValueByKey("load1"),
+				"load_5":  record.ValueByKey("load5"),
+				"load_15": record.ValueByKey("load15"),
+			}
+			data = append(data, row)
+		}
+
 	}
 
 	if result.Err() != nil {

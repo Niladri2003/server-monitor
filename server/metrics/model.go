@@ -16,7 +16,7 @@ type SystemMetrics struct {
 	Timestamp    time.Time      `json:"timestamp"`
 	Memory       MemoryInfo     `json:"memory"`
 	Swap         SwapMemoryInfo `json:"swap"`
-	CPU          CPUInfo        `json:"cpu"`
+	CPU          CPUInfo        `json:"cpustats"`
 	LoadAverages LoadAverages   `json:"load_averages"`
 	Disk         DiskInfo       `json:"disk"`
 	Network      []NetworkInfo  `json:"network"`

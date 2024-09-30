@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"sync"
+	"time"
 )
 
 func GetAllMetrics(c *fiber.Ctx, client influxdb2.Client) error {
@@ -35,16 +36,22 @@ func GetAllMetrics(c *fiber.Ctx, client influxdb2.Client) error {
 	hostInfoChan := make(chan fiber.Map)
 	diskChan := make(chan fiber.Map)
 	networkChan := make(chan fiber.Map)
+	loadAvgChan := make(chan fiber.Map)
+
+	// Set a timeout for each query
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
 	// Query functions running in parallel
-	go queryMemoryUsage(c, client, serverID, start, stop, memChan, &wg)
-	go querySwapMemoryUsage(c, client, serverID, start, stop, swapChan, &wg)
-	go queryCpuUsage(c, client, serverID, start, stop, cpuChan, &wg)
-	go queryTop5ProcessByCpu(c, client, serverID, start, stop, top5CpuChan, &wg)
-	go queryTop5ProcessByMemory(c, client, serverID, start, stop, top5MemChan, &wg)
-	go queryHostInfo(c, client, serverID, start, stop, hostInfoChan, &wg)
-	go queryDiskUsage(c, client, serverID, start, stop, diskChan, &wg)
-	go queryNetworkStats(c, client, serverID, start, stop, networkChan, &wg)
+	go queryMemoryUsage(ctx, c, client, serverID, start, stop, memChan, &wg)
+	go querySwapMemoryUsage(ctx, c, client, serverID, start, stop, swapChan, &wg)
+	go queryCpuUsage(ctx, c, client, serverID, start, stop, cpuChan, &wg)
+	go queryTop5ProcessByCpu(ctx, c, client, serverID, start, stop, top5CpuChan, &wg)
+	go queryTop5ProcessByMemory(ctx, c, client, serverID, start, stop, top5MemChan, &wg)
+	go queryHostInfo(ctx, c, client, serverID, start, stop, hostInfoChan, &wg)
+	go queryDiskUsage(ctx, c, client, serverID, start, stop, diskChan, &wg)
+	go queryNetworkStats(ctx, c, client, serverID, start, stop, networkChan, &wg)
+	go queryCpuLoadAvg(ctx, c, client, serverID, start, stop, loadAvgChan, &wg)
 
 	// Wait for all goroutines to finish
 	go func() {
@@ -57,6 +64,7 @@ func GetAllMetrics(c *fiber.Ctx, client influxdb2.Client) error {
 		close(hostInfoChan)
 		close(diskChan)
 		close(networkChan)
+		close(loadAvgChan)
 	}()
 
 	// Combine the results from all channels
@@ -69,13 +77,27 @@ func GetAllMetrics(c *fiber.Ctx, client influxdb2.Client) error {
 		"host_info":           <-hostInfoChan,
 		"disk_usage":          <-diskChan,
 		"network_stats":       <-networkChan,
+		"load_avg":            <-loadAvgChan,
 	}
 
 	return c.Status(http.StatusOK).JSON(response)
 }
 
 // Individual query functions
-func queryMemoryUsage(c *fiber.Ctx, client influxdb2.Client, serverID, start, stop string, ch chan fiber.Map, wg *sync.WaitGroup) {
+
+func queryCpuLoadAvg(ctx context.Context, c *fiber.Ctx, client influxdb2.Client, serverID, start, stop string, ch chan fiber.Map, wg *sync.WaitGroup) {
+	defer wg.Done()
+	query := `from(bucket: "` + os.Getenv("INFLUXDB_BUCKET") + `")
+              |> range(start: ` + start + `, stop: ` + stop + `)
+              |> filter(fn: (r) => r["_measurement"] == "load_averages")
+              |> filter(fn: (r) => r["server_id"] == "` + serverID + `")
+              |> filter(fn: (r) => r._field == "load1" or r._field == "load5" or r._field == "load15")
+              |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")`
+	queryInfluxDBConcurrent(ctx, c, client, query, "CpuLoad", ch)
+
+}
+
+func queryMemoryUsage(ctx context.Context, c *fiber.Ctx, client influxdb2.Client, serverID, start, stop string, ch chan fiber.Map, wg *sync.WaitGroup) {
 	defer wg.Done()
 	query := `from(bucket: "` + os.Getenv("INFLUXDB_BUCKET") + `")
               |> range(start: ` + start + `, stop: ` + stop + `)
@@ -83,11 +105,11 @@ func queryMemoryUsage(c *fiber.Ctx, client influxdb2.Client, serverID, start, st
               |> filter(fn: (r) => r["server_id"] == "` + serverID + `")
               |> filter(fn: (r) => r._field == "free_gb" or r._field == "total_gb" or r._field == "used_percent" or r._field == "used_gb")
               |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")`
-	queryInfluxDBConcurrent(c, client, query, "Memory", ch)
+	queryInfluxDBConcurrent(ctx, c, client, query, "Memory", ch)
 
 }
 
-func querySwapMemoryUsage(c *fiber.Ctx, client influxdb2.Client, serverID, start, stop string, ch chan fiber.Map, wg *sync.WaitGroup) {
+func querySwapMemoryUsage(ctx context.Context, c *fiber.Ctx, client influxdb2.Client, serverID, start, stop string, ch chan fiber.Map, wg *sync.WaitGroup) {
 	defer wg.Done()
 	query := `from(bucket: "` + os.Getenv("INFLUXDB_BUCKET") + `")
               |> range(start: ` + start + `, stop: ` + stop + `)
@@ -95,11 +117,11 @@ func querySwapMemoryUsage(c *fiber.Ctx, client influxdb2.Client, serverID, start
               |> filter(fn: (r) => r["server_id"] == "` + serverID + `")
               |> filter(fn: (r) => r._field == "free_gb" or r._field == "total_gb" or r._field == "used_percent" or r._field == "used_gb")
               |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")`
-	queryInfluxDBConcurrent(c, client, query, "Swap", ch)
+	queryInfluxDBConcurrent(ctx, c, client, query, "Swap", ch)
 
 }
 
-func queryCpuUsage(c *fiber.Ctx, client influxdb2.Client, serverID, start, stop string, ch chan fiber.Map, wg *sync.WaitGroup) {
+func queryCpuUsage(ctx context.Context, c *fiber.Ctx, client influxdb2.Client, serverID, start, stop string, ch chan fiber.Map, wg *sync.WaitGroup) {
 	defer wg.Done()
 	query := `from(bucket: "` + os.Getenv("INFLUXDB_BUCKET") + `")
               |> range(start: ` + start + `, stop: ` + stop + `)
@@ -107,10 +129,10 @@ func queryCpuUsage(c *fiber.Ctx, client influxdb2.Client, serverID, start, stop 
               |> filter(fn: (r) => r["server_id"] == "` + serverID + `")
               |> filter(fn: (r) => r._field == "core" or r._field == "idle_time_sec" or r._field == "iowait_time_sec" or r._field == "system_time_sec" or r._field == "usage_per_core_percent" or r._field == "user_time_sec" or r._field == "model")
               |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")`
-	queryInfluxDBConcurrent(c, client, query, "Cpu", ch)
+	queryInfluxDBConcurrent(ctx, c, client, query, "Cpu", ch)
 
 }
-func queryTop5ProcessByCpu(c *fiber.Ctx, client influxdb2.Client, serverID, start, stop string, ch chan fiber.Map, wg *sync.WaitGroup) {
+func queryTop5ProcessByCpu(ctx context.Context, c *fiber.Ctx, client influxdb2.Client, serverID, start, stop string, ch chan fiber.Map, wg *sync.WaitGroup) {
 	defer wg.Done()
 	query := `from(bucket: "` + os.Getenv("INFLUXDB_BUCKET") + `")
               |> range(start: ` + start + `, stop: ` + stop + `)
@@ -118,11 +140,11 @@ func queryTop5ProcessByCpu(c *fiber.Ctx, client influxdb2.Client, serverID, star
               |> filter(fn: (r) => r["server_id"] == "` + serverID + `")
               |> filter(fn: (r) => r._field == "name" or r._field == "cpu_percent" or r._field == "memory_percent" or r._field == "pid")
               |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")`
-	queryInfluxDBConcurrent(c, client, query, "ProcessCpu", ch)
+	queryInfluxDBConcurrent(ctx, c, client, query, "ProcessCpu", ch)
 
 }
 
-func queryTop5ProcessByMemory(c *fiber.Ctx, client influxdb2.Client, serverID, start, stop string, ch chan fiber.Map, wg *sync.WaitGroup) {
+func queryTop5ProcessByMemory(ctx context.Context, c *fiber.Ctx, client influxdb2.Client, serverID, start, stop string, ch chan fiber.Map, wg *sync.WaitGroup) {
 	defer wg.Done()
 	query := `from(bucket: "` + os.Getenv("INFLUXDB_BUCKET") + `")
               |> range(start: ` + start + `, stop: ` + stop + `)
@@ -130,11 +152,11 @@ func queryTop5ProcessByMemory(c *fiber.Ctx, client influxdb2.Client, serverID, s
               |> filter(fn: (r) => r["server_id"] == "` + serverID + `")
               |> filter(fn: (r) => r._field == "name" or r._field == "cpu_percent" or r._field == "memory_percent" or r._field == "pid")
               |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")`
-	queryInfluxDBConcurrent(c, client, query, "ProcessMemory", ch)
+	queryInfluxDBConcurrent(ctx, c, client, query, "ProcessMemory", ch)
 
 }
 
-func queryHostInfo(c *fiber.Ctx, client influxdb2.Client, serverID, start, stop string, ch chan fiber.Map, wg *sync.WaitGroup) {
+func queryHostInfo(ctx context.Context, c *fiber.Ctx, client influxdb2.Client, serverID, start, stop string, ch chan fiber.Map, wg *sync.WaitGroup) {
 	defer wg.Done()
 	query := `from(bucket: "` + os.Getenv("INFLUXDB_BUCKET") + `")
               |> range(start: ` + start + `, stop: ` + stop + `)
@@ -144,11 +166,11 @@ func queryHostInfo(c *fiber.Ctx, client influxdb2.Client, serverID, start, stop 
 	          or r._field == "kernel_version" or r._field == "os" or r._field == "platform_version" or r._field == "uptime_hours")
               |> last()
               |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")`
-	queryInfluxDBConcurrent(c, client, query, "HostInfo", ch)
+	queryInfluxDBConcurrent(ctx, c, client, query, "HostInfo", ch)
 
 }
 
-func queryDiskUsage(c *fiber.Ctx, client influxdb2.Client, serverID, start, stop string, ch chan fiber.Map, wg *sync.WaitGroup) {
+func queryDiskUsage(ctx context.Context, c *fiber.Ctx, client influxdb2.Client, serverID, start, stop string, ch chan fiber.Map, wg *sync.WaitGroup) {
 	defer wg.Done()
 	query := `from(bucket: "` + os.Getenv("INFLUXDB_BUCKET") + `")
               |> range(start: ` + start + `, stop: ` + stop + `)
@@ -156,9 +178,9 @@ func queryDiskUsage(c *fiber.Ctx, client influxdb2.Client, serverID, start, stop
               |> filter(fn: (r) => r["server_id"] == "` + serverID + `")
              |> filter(fn: (r) => r._field == "free_gb" or r._field == "total_gb" or r._field == "used_percent" or r._field == "used_gb")
               |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")`
-	queryInfluxDBConcurrent(c, client, query, "Disk", ch)
+	queryInfluxDBConcurrent(ctx, c, client, query, "Disk", ch)
 }
-func queryNetworkStats(c *fiber.Ctx, client influxdb2.Client, serverID, start, stop string, ch chan fiber.Map, wg *sync.WaitGroup) {
+func queryNetworkStats(ctx context.Context, c *fiber.Ctx, client influxdb2.Client, serverID, start, stop string, ch chan fiber.Map, wg *sync.WaitGroup) {
 	defer wg.Done()
 	query := `from(bucket: "` + os.Getenv("INFLUXDB_BUCKET") + `")
               |> range(start: ` + start + `, stop: ` + stop + `)
@@ -170,17 +192,17 @@ func queryNetworkStats(c *fiber.Ctx, client influxdb2.Client, serverID, start, s
 	                           or r._field == "interface_name" or r._field == "packets_recv" 
 	                           or r._field == "packets_sent")
               |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")`
-	queryInfluxDBConcurrent(c, client, query, "Network", ch)
+	queryInfluxDBConcurrent(ctx, c, client, query, "Network", ch)
 
 }
 
-func queryInfluxDBConcurrent(c *fiber.Ctx, client influxdb2.Client, query, measurement string, ch chan fiber.Map) {
+func queryInfluxDBConcurrent(ctx context.Context, c *fiber.Ctx, client influxdb2.Client, query, measurement string, ch chan fiber.Map) {
 	// Initialize the QueryAPI for InfluxDB
 	queryAPI := client.QueryAPI(os.Getenv("INFLUXDB_ORG"))
-	fmt.Println(measurement, query)
+	//fmt.Println(measurement, query)
 
 	// Execute the query
-	result, err := queryAPI.Query(context.Background(), query)
+	result, err := queryAPI.Query(ctx, query)
 	if err != nil {
 		ch <- fiber.Map{"error": fmt.Sprintf("Query error: %s", err.Error())}
 		return
@@ -194,7 +216,7 @@ func queryInfluxDBConcurrent(c *fiber.Ctx, client influxdb2.Client, query, measu
 	switch measurement {
 
 	case "Disk":
-		fmt.Println("Disk")
+		//fmt.Println("Disk")
 		for result.Next() {
 			record := result.Record()
 			fmt.Println(record)
@@ -239,7 +261,7 @@ func queryInfluxDBConcurrent(c *fiber.Ctx, client influxdb2.Client, query, measu
 	case "Network":
 		for result.Next() {
 			record := result.Record()
-			fmt.Println("data", record)
+			//fmt.Println("data", record)
 			// The fields are now columns, so we'll extract them individually
 			row := map[string]interface{}{
 				"time":           record.Time(),
@@ -315,13 +337,27 @@ func queryInfluxDBConcurrent(c *fiber.Ctx, client influxdb2.Client, query, measu
 			}
 			data = append(data, row)
 		}
+	case "CpuLoad":
+		for result.Next() {
+			record := result.Record()
+			fmt.Println("data", record)
+			// The fields are now columns, so we'll extract them individually
+			row := map[string]interface{}{
+				"time":   record.Time(),
+				"load1":  record.ValueByKey("load1"),
+				"load5":  record.ValueByKey("load5"),
+				"load15": record.ValueByKey("load15"),
+			}
+			data = append(data, row)
+		}
+
 	}
 
 	if result.Err() != nil {
 		ch <- fiber.Map{"error": fmt.Sprintf("Query processing error: %s", result.Err().Error())}
 		return
 	}
-
+	//fmt.Println("HEllo")
 	// Send the final result through the channel
 	ch <- fiber.Map{"data": data}
 }

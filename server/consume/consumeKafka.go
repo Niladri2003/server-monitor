@@ -3,11 +3,13 @@ package consume
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/Niladri2003/server-monitor/server/InfluxSetup"
 	"github.com/Niladri2003/server-monitor/server/metrics"
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/segmentio/kafka-go"
 	"log"
+	"os"
 )
 
 //type MetricMessage struct {
@@ -20,9 +22,9 @@ import (
 //}
 
 func ConsumeKafka(influxClient influxdb2.Client) error {
-
+	var kafkaurl = fmt.Sprintf("%s:%s", os.Getenv("KAFKA_HOST"), os.Getenv("KAFKA_PORT"))
 	reader := kafka.NewReader(kafka.ReaderConfig{
-		Brokers: []string{"localhost:9092"},
+		Brokers: []string{kafkaurl},
 		Topic:   "agent-data-topic",
 		GroupID: "central-server-group",
 	})

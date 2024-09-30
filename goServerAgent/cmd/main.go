@@ -1,19 +1,24 @@
 package main
 
 import (
-	"context"
+	"bufio"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"github.com/Niladri2003/server-monitor/goServerAgent"
 	"github.com/fatih/color"
-	"github.com/segmentio/kafka-go"
 	"github.com/shirou/gopsutil/v4/process"
+	"log"
+	"os/signal"
+	"syscall"
+	"time"
+
+	//"github.com/segmentio/kafka-go"
+	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/spf13/viper"
 	"io/ioutil"
-	"log"
 	"net/http"
-	"time"
+	"os"
+	"strings"
 )
 
 func printBanner() {
@@ -39,6 +44,37 @@ type Config struct {
 }
 type VerificationStatus struct {
 	Verified bool `json:"verified"`
+}
+
+func ReadConfig() kafka.ConfigMap {
+	// reads the client configuration from client.properties
+	// and returns it as a key-value map
+	m := make(map[string]kafka.ConfigValue)
+
+	file, err := os.Open("client.properties")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to open file: %s", err)
+		os.Exit(1)
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if !strings.HasPrefix(line, "#") && len(line) != 0 {
+			kv := strings.Split(line, "=")
+			parameter := strings.TrimSpace(kv[0])
+			value := strings.TrimSpace(kv[1])
+			m[parameter] = value
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		fmt.Printf("Failed to read file: %s", err)
+		os.Exit(1)
+	}
+
+	return m
 }
 
 func loadConfig(configPath string) (Config, error) {
@@ -72,7 +108,6 @@ func verifyAPIKey(apiKey string) bool {
 	fmt.Println("API key verified successfully")
 	return true
 }
-
 func loadVerificationStatus() bool {
 	file, err := ioutil.ReadFile("verified.json")
 	if err != nil {
@@ -82,7 +117,6 @@ func loadVerificationStatus() bool {
 	json.Unmarshal(file, &status)
 	return status.Verified
 }
-
 func saveVerificationStatus() {
 	status := VerificationStatus{Verified: true}
 	data, _ := json.Marshal(status)
@@ -98,55 +132,43 @@ type MetricMessage struct {
 	Top5Memory []goServerAgent.ProcessInfo `json:"top5_memory_processes"`
 }
 
-func main() {
-	// Load configuration
-	// Accept a command-line flag for the config file path
-	configPath := flag.String("config", "config.yaml", "Path to the config file")
-	flag.Parse()
-
-	// Load configuration
-	config, err := loadConfig(*configPath)
+func produce(topic string, config kafka.ConfigMap) {
+	// Create a new producer instance
+	p, err := kafka.NewProducer(&config)
 	if err != nil {
-		log.Fatalf("could not load config: %v", err)
+		log.Fatalf("Failed to create producer: %v", err)
 	}
-	//Print Config file
-	fmt.Println("---------config----------")
-	fmt.Println("Server Id =", config.ServerId)
 
-	// Check if the API key has already been verified
-	if !loadVerificationStatus() {
-		// If not verified, verify the API key
-		if !verifyAPIKey(config.APIKey) {
-			log.Fatal("API key verification failed. Exiting...")
+	// Goroutine to handle message delivery reports and other events
+	go func() {
+		for e := range p.Events() {
+			switch ev := e.(type) {
+			case *kafka.Message:
+				if ev.TopicPartition.Error != nil {
+					fmt.Printf("Failed to deliver message: %v\n", ev.TopicPartition)
+				} else {
+					//fmt.Printf("Produced event to topic %s: key = %-10s value = %s\n",
+					//	*ev.TopicPartition.Topic, string(ev.Key), string(ev.Value))
+				}
+			}
 		}
-		// Save verification status to avoid re-verification
-		saveVerificationStatus()
-	}
-	// Kafka writer configuration
-	writer := kafka.Writer{
-		Addr:     kafka.TCP(config.KafkaBroker),
-		Topic:    config.Topic,
-		Balancer: &kafka.LeastBytes{},
-	}
+	}()
 
-	defer writer.Close()
-
-	// Periodically collect and display metrics
-	// Check if interval is less than 10, and set it to 10 if necessary
-	interval := config.Interval
+	interval := 10
 	if interval < 10 {
 		interval = 10 // Minimum interval is 10 seconds
 	}
 
-	// Periodically collect and display metrics
 	ticker := time.NewTicker(time.Duration(interval) * time.Second)
 	defer ticker.Stop()
-	// Adjust the interval as needed
+
+	// Capture interrupt signals to gracefully shut down
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	for {
 		select {
 		case <-ticker.C:
-
 			metrics := goServerAgent.CollectMetrics()
 			processes, err := process.Processes()
 			if err != nil {
@@ -155,8 +177,8 @@ func main() {
 			top5byCpu := goServerAgent.TopProcessesByCPU(processes, 5)
 			top5byMemory := goServerAgent.TopProcessesByMemory(processes, 5)
 			message := MetricMessage{
-				APIKey:     config.APIKey,
-				ServerID:   config.ServerId, // Unique server identifier
+				APIKey:     "15374517",
+				ServerID:   "123123", // Unique server identifier
 				Timestamp:  time.Now().Format(time.RFC3339),
 				Metrics:    metrics,
 				Top5CPU:    top5byCpu,
@@ -169,18 +191,116 @@ func main() {
 			log.Println("Sending metrics to Kafka...")
 
 			// Send collected data to Kafka
-			err = writer.WriteMessages(context.Background(),
-				kafka.Message{
-					Key:   []byte(config.APIKey),
-					Value: []byte(messageBytes),
-				},
-			)
+			err = p.Produce(&kafka.Message{
+				TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny},
+				Key:            []byte("15374517"),
+				Value:          messageBytes,
+			}, nil)
+
 			if err != nil {
-				log.Fatal("failed to write message:", err)
+				log.Println("Failed to produce message:", err)
 			}
+
+		case sig := <-sigChan: // Gracefully handle program shutdown
+			log.Printf("Received signal %v. Shutting down...", sig)
+			p.Flush(15 * 1000) // Flush any remaining messages
+			p.Close()          // Close the producer
+			return
 		}
 	}
 }
+
+func main() {
+	topic := "agent-data-topic"
+	config := ReadConfig()
+
+	produce(topic, config)
+
+}
+
+//func main() {
+//	// Load configuration
+//	// Accept a command-line flag for the config file path
+//	configPath := flag.String("config", "config.yaml", "Path to the config file")
+//	flag.Parse()
+//
+//	// Load configuration
+//	config, err := loadConfig(*configPath)
+//	if err != nil {
+//		log.Fatalf("could not load config: %v", err)
+//	}
+//	//Print Config file
+//	fmt.Println("---------config----------")
+//	fmt.Println("Server Id =", config.ServerId)
+//
+//	// Check if the API key has already been verified
+//	if !loadVerificationStatus() {
+//		// If not verified, verify the API key
+//		if !verifyAPIKey(config.APIKey) {
+//			log.Fatal("API key verification failed. Exiting...")
+//		}
+//		// Save verification status to avoid re-verification
+//		saveVerificationStatus()
+//	}
+//	// Kafka writer configuration
+//	writer := kafka.Writer{
+//		Addr:     kafka.TCP(config.KafkaBroker),
+//		Topic:    config.Topic,
+//		Balancer: &kafka.LeastBytes{},
+//	}
+//
+//	defer writer.Close()
+//
+//	// Periodically collect and display metrics
+//	// Check if interval is less than 10, and set it to 10 if necessary
+//	interval := config.Interval
+//	if interval < 10 {
+//		interval = 10 // Minimum interval is 10 seconds
+//	}
+//
+//	// Periodically collect and display metrics
+//	ticker := time.NewTicker(time.Duration(interval) * time.Second)
+//	defer ticker.Stop()
+//	// Adjust the interval as needed
+//
+//	for {
+//		select {
+//		case <-ticker.C:
+//
+//			metrics := goServerAgent.CollectMetrics()
+//			processes, err := process.Processes()
+//			if err != nil {
+//				fmt.Println(err)
+//			}
+//			top5byCpu := goServerAgent.TopProcessesByCPU(processes, 5)
+//			top5byMemory := goServerAgent.TopProcessesByMemory(processes, 5)
+//			message := MetricMessage{
+//				APIKey:     config.APIKey,
+//				ServerID:   config.ServerId, // Unique server identifier
+//				Timestamp:  time.Now().Format(time.RFC3339),
+//				Metrics:    metrics,
+//				Top5CPU:    top5byCpu,
+//				Top5Memory: top5byMemory,
+//			}
+//			messageBytes, err := json.Marshal(message)
+//			if err != nil {
+//				log.Fatal("Failed to marshal message", err)
+//			}
+//			log.Println("Sending metrics to Kafka...")
+//
+//			// Send collected data to Kafka
+//			err = writer.WriteMessages(context.Background(),
+//				kafka.Message{
+//					Key:   []byte(config.APIKey),
+//					Value: []byte(messageBytes),
+//				},
+//			)
+//			if err != nil {
+//				log.Fatal("failed to write message:", err)
+//			}
+//		}
+//	}
+//}
 
 //package main
 //

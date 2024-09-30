@@ -133,7 +133,7 @@ func StoreMetricsFromKafka(client influxdb2.Client, msg metrics.MetricMessage) e
 		return err
 	}
 
-	// Add points for top processes by cpu
+	// Add points for top processes by cpustats
 	top5cpu := make([]*write.Point, 0)
 	for _, proc := range msg.Top5CPU {
 		processPoint := influxdb2.NewPointWithMeasurement("top_processes_by_cpu").
@@ -203,7 +203,7 @@ func StoreMetricsFromKafka(client influxdb2.Client, msg metrics.MetricMessage) e
 	allPoints := make([]*write.Point, 0)
 
 	allPoints = append(allPoints, memoryPoint, loadAvgPoint, systemHostInfo, SwapMemoryInfo)
-	//allPoints = append(allPoints, cpu...)
+	//allPoints = append(allPoints, cpustats...)
 	//allPoints = append(allPoints, diskPoints...)
 	//allPoints = append(allPoints, top5cpu...)
 	//allPoints = append(allPoints, top5memory...)

@@ -48,6 +48,8 @@ const Input = React.forwardRef(({ className, type, ...props }, ref) => {
          `,
                     className
                 )}
+                value={props.value}
+                onChange={props.handleChange}
                 ref={ref}
                 {...props} />
         </motion.div>)

@@ -2,6 +2,8 @@ package goServerAgent
 
 import (
 	"fmt"
+	"github.com/Niladri2003/server-monitor/goServerAgent/DataModel"
+	cpu2 "github.com/Niladri2003/server-monitor/goServerAgent/cpustats"
 	"github.com/shirou/gopsutil/v4/cpu"
 	"github.com/shirou/gopsutil/v4/disk"
 	"github.com/shirou/gopsutil/v4/host"
@@ -10,6 +12,7 @@ import (
 	"github.com/shirou/gopsutil/v4/net"
 	"github.com/shirou/gopsutil/v4/process"
 	"io/ioutil"
+	"log"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -19,15 +22,16 @@ import (
 
 // SystemMetrics struct holds all the system metrics to be sent via Kafka
 type SystemMetrics struct {
-	Timestamp    time.Time      `json:"timestamp"`
-	Memory       MemoryInfo     `json:"memory"`
-	Swap         SwapMemoryInfo `json:"swap"`
-	CPU          CPUInfo        `json:"cpu"`
-	LoadAverages LoadAverages   `json:"load_averages"`
-	Disk         DiskInfo       `json:"disk"`
-	Network      []NetworkInfo  `json:"network"`
-	TopProcesses []ProcessInfo  `json:"top_processes"`
-	SystemInfo   HostInfo       `json:"system_info"`
+	Timestamp    time.Time          `json:"timestamp"`
+	Memory       MemoryInfo         `json:"memory"`
+	Swap         SwapMemoryInfo     `json:"swap"`
+	CPU          CPUInfo            `json:"cpustats"`
+	LoadAverages LoadAverages       `json:"load_averages"`
+	Disk         DiskInfo           `json:"disk"`
+	Network      []NetworkInfo      `json:"network"`
+	TopProcesses []ProcessInfo      `json:"top_processes"`
+	SystemInfo   HostInfo           `json:"system_info"`
+	CpuStats     DataModel.CPUStats `json:"cpu_stats"`
 }
 
 // MemoryInfo holds the memory details
@@ -49,10 +53,34 @@ type SwapMemoryInfo struct {
 
 // CPUInfo holds CPU details
 type CPUInfo struct {
-	Model        string         `json:"model"`
-	Cores        int            `json:"cores"`
-	UsagePerCore []float64      `json:"usage_per_core_percent"`
-	Times        []CPUTimesInfo `json:"times"`
+	Model        string             `json:"model"`
+	Cores        int                `json:"cores"`
+	UsagePerCore []PerCoreUsage     `json:"usage_per_core_percent"`
+	Times        []CPUTimesInfo     `json:"times"`
+	Temperatures []CPUTemperature   `json:"temperatures"`     // New field for temperatures
+	Context      CPUContextSwitches `json:"context_switches"` // New field for context switches
+	Interrupts   CPUInterrupts      `json:"interrupts"`
+}
+type CPUTemperature struct {
+	Core        int     `json:"core"`
+	Temperature float64 `json:"temperature_celsius"`
+}
+
+type CPUContextSwitches struct {
+	Voluntary   uint64 `json:"voluntary"`
+	Involuntary uint64 `json:"involuntary"`
+}
+
+type CPUInterrupts struct {
+	Interrupts uint64 `json:"interrupts"`
+	SoftIRQs   uint64 `json:"soft_irqs"`
+}
+
+type PerCoreUsage struct {
+	Core      int     `json:"core"`
+	CoreID    string  `json:"coreID"`
+	CacheSize int32   `json:"cacheSize"`
+	Usage     float64 `json:"usage"`
 }
 
 // CPUTimesInfo holds individual CPU core times
@@ -61,6 +89,7 @@ type CPUTimesInfo struct {
 	System float64 `json:"system_time_sec"`
 	Idle   float64 `json:"idle_time_sec"`
 	Iowait float64 `json:"iowait_time_sec"`
+	Steal  float64 `json:"steal_time_sec"`
 }
 
 // LoadAverages holds CPU load averages
@@ -144,33 +173,86 @@ func CollectMetrics() SystemMetrics {
 			UsedPercent: swapInfo.UsedPercent,
 		}
 	}
-
-	// CPU Info
+	data, err := cpu2.GetCPUStats()
+	fmt.Println(data)
+	metrics.CpuStats = data
+	// Collect CPU Info (includes static frequency)
 	cpuInfo, err := cpu.Info()
-	if err == nil && len(cpuInfo) > 0 {
+	if err != nil {
+		log.Fatalf("Failed to get CPU info: %v", err)
+	}
+	var totalcore int
+	for _, cpu := range cpuInfo {
+		totalcore += int(cpu.Cores)
+	}
+	fmt.Println("CORES", totalcore)
+	//fmt.Println("CPU Core", cpuInfo[0], cpuInfo[0].CacheSize)
+	if len(cpuInfo) > 0 {
 		metrics.CPU.Model = cpuInfo[0].ModelName
-		metrics.CPU.Cores = int(cpuInfo[0].Cores)
-	}
+		metrics.CPU.Cores = totalcore
 
-	// CPU Usage per Core
-	percentPerCore, err := cpu.Percent(0, true)
-	if err == nil {
-		metrics.CPU.UsagePerCore = percentPerCore
-	}
-
-	// CPU Times
-	cpuTimes, err := cpu.Times(true)
-	if err == nil {
-		for _, times := range cpuTimes {
-			metrics.CPU.Times = append(metrics.CPU.Times, CPUTimesInfo{
-				User:   times.User,
-				System: times.System,
-				Idle:   times.Idle,
-				Iowait: times.Iowait,
+		// Set static frequency for each core (logical CPU)
+		for i := 0; i < len(cpuInfo); i++ {
+			metrics.CPU.UsagePerCore = append(metrics.CPU.UsagePerCore, PerCoreUsage{
+				Core:      i,
+				CoreID:    cpuInfo[i].CoreID,
+				CacheSize: cpuInfo[i].CacheSize,
+				Usage:     cpuInfo[i].Mhz, // Base frequency in MHz
 			})
 		}
 	}
 
+	// Collect CPU Usage per Core (logical CPUs)
+	percentPerCore, err := cpu.Percent(0, true)
+	if err != nil {
+		log.Fatalf("Failed to get CPU usage per core: %v", err)
+	}
+
+	// Update usage percentage for each core
+	for i, percent := range percentPerCore {
+		if i < len(metrics.CPU.UsagePerCore) {
+			metrics.CPU.UsagePerCore[i].Usage = percent
+		}
+	}
+
+	// Collect CPU Times (per core)
+	cpuTimes, err := cpu.Times(true)
+	if err != nil {
+		log.Fatalf("Failed to get CPU times: %v", err)
+	}
+	for _, times := range cpuTimes {
+		metrics.CPU.Times = append(metrics.CPU.Times, CPUTimesInfo{
+			User:   times.User,
+			System: times.System,
+			Idle:   times.Idle,
+			Iowait: times.Iowait,
+			Steal:  times.Steal, // Collect steal time
+		})
+	}
+
+	// Collect CPU Temperature (if available, gopsutil doesn't provide cross-platform support for this directly)
+	// You can get temperature using other OS specific tools or libraries like lm-sensors on Linux.
+
+	// Collect context switches (can be done via host.Info())
+	hostInfo, err := host.Info()
+	if err != nil {
+		log.Fatalf("Failed to get host info: %v", err)
+	}
+	metrics.CPU.Context = CPUContextSwitches{
+		Voluntary:   hostInfo.Uptime, // Example, replace with actual data if available
+		Involuntary: hostInfo.Uptime, // Example, replace with actual data if available
+	}
+	//fmt.Println(hostInfo)
+
+	// Interrupts collection might need other packages as gopsutil doesn't have native support.
+	// Replace these lines if you find the right tool/library for your platform.
+	metrics.CPU.Interrupts = CPUInterrupts{
+		Interrupts: 0, // Placeholder, replace with actual data
+		SoftIRQs:   0, // Placeholder, replace with actual data
+	}
+
+	// Display the final collected metrics
+	//fmt.Printf("Collected Metrics: %+v\n", metrics)
 	// CPU Load Averages
 	loadAvg, err := load.Avg()
 	if err == nil {
@@ -211,7 +293,7 @@ func CollectMetrics() SystemMetrics {
 	}
 
 	// System Info
-	hostInfo, err := host.Info()
+	hostInfo, err = host.Info()
 	if err == nil {
 		metrics.SystemInfo = HostInfo{
 			Hostname:        hostInfo.Hostname,
