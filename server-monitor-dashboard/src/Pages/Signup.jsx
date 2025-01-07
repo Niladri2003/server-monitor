@@ -8,7 +8,7 @@ import {
     IconBrandGoogle,
     IconBrandOnlyfans,
 } from "@tabler/icons-react";
-import Logo from "../assets/logo.jpg";
+import Logo from "../assets/brainwave-symbol.svg";
 
 export function Signup() {
     const handleSubmit = (e) => {
@@ -19,14 +19,14 @@ export function Signup() {
         (<div className={"h-screen w-screen bg-black flex items-center justify-center"}>
             <div
                 className="max-w-md w-full mx-auto rounded-none border-1 border-white md:rounded-2xl p-4 md:p-8 shadow-input bg-white dark:bg-black">
-                <div className={"w-full items-center flex justify-center mt-3 mb-2"}>
-                    <img src={Logo} className={"h-16  rounded-full "}/>
+                <div className={" items-center flex justify-center "}>
+                    <img src={Logo} className={"h-40  rounded-full "}/>
                 </div>
                 <h2 className="font-bold text-xl text-neutral-800 dark:text-neutral-200">
-                    Welcome to Sysmos
+                    Welcome to Prime Coding
                 </h2>
                 <p className="text-neutral-600 text-sm max-w-sm mt-2 dark:text-neutral-300">
-                    Sysmos is simple and easy to use server monitoring system
+                    Elevate your Career with PrimeCoding
                 </p>
                 <form className="my-8" onSubmit={handleSubmit}>
                     <div
