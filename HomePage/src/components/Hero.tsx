@@ -17,9 +17,11 @@ export default function Hero() {
             <button className="bg-indigo-600 text-white px-6 md:px-8 py-3 rounded-lg hover:bg-indigo-700 transition-colors w-full sm:w-auto">
               Start Monitoring
             </button>
-            <button className="bg-white text-indigo-900 px-6 md:px-8 py-3 rounded-lg hover:bg-gray-100 transition-colors w-full sm:w-auto">
+           <a href={"https://sysmos.triaxsoftware.tech/"} target={"_blank"} className={"w-full sm:w-auto"}>
+            <button  className="bg-white text-indigo-900 px-6 md:px-8 py-3 rounded-lg hover:bg-gray-100 transition-colors w-full sm:w-auto">
               Watch Demo
             </button>
+            </a>
           </div>
         </div>
         <div className="px-2 sm:px-4">
