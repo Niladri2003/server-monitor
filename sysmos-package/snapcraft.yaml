@@ -1,0 +1,24 @@
+name: sysmos-app
+version: '1.0.0'
+summary: SYSMOS System Monitoring Tool
+description: |
+  SYSMOS is a tool for monitoring system metrics.
+
+grade: stable
+base: core22
+
+confinement: devmode
+
+apps:
+  sysmos:
+    command: bin/sysmos-app
+    plugs:
+      - network
+      - network-bind
+
+parts:
+  sysmos:
+    source: ../goServerAgent
+    plugin: go
+    build-packages:
+      - golang
