@@ -38,7 +38,7 @@ This project is a server monitoring dashboard that collects and displays various
 
 1. **Clone the repository**:
     ```sh
-    git clone https://github.com/yourusername/server-monitor-dashboard.git
+    git clone https://github.com/Niladri2003/server-monitor.git
     cd server-monitor-dashboard
     ```
 
